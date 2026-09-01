@@ -1,10 +1,7 @@
 # MiniBase
 
-MiniBase is ReactorLab's database control plane.
-
-MiniBase will manage PostgreSQL databases for ReactorLab applications while
-keeping the database engine private from the public internet. MiniBase and
-MiniDeploy are separate products and services.
+MiniBase is ReactorLab's database control plane. MiniBase and MiniDeploy are
+separate products and services.
 
 ## Phase 1: PostgreSQL foundation
 
@@ -14,26 +11,51 @@ Phase 1 provides one shared PostgreSQL 17 server in Docker:
   `reactorlab-data` Docker network.
 - PostgreSQL does not publish port 5432, or any other port, on the host.
 - PostgreSQL data lives in the external `minibase-postgres-data` volume.
-- Recreating the container does not delete the external data volume or the data
-  stored in it.
+- Recreating the container does not delete the external data volume or its data.
 - The administrator password is stored in an ignored, mode-0600 file under
   `secrets/` and is mounted read-only into the container.
 
-Create or verify the Phase 1 foundation with:
+Create or verify that foundation with:
 
 ```bash
 scripts/bootstrap-postgres.sh
 scripts/verify-postgres.sh
 ```
 
-Run these scripts as `conradevans` from any working directory. Neither script
-prints the administrator password. The bootstrap script preserves existing
-networks, volumes, and credentials and stops if the existing network does not
-match the required private architecture.
+## Phase 2: local control plane metadata
 
-## Future phases
+Phase 2 adds a Go control-plane service and a SQLite metadata database. SQLite
+contains resource metadata only; it is separate from application data in
+PostgreSQL and stores no PostgreSQL credentials, connection strings, API tokens,
+or other application secrets.
 
-Application-specific databases and roles are not created in Phase 1. Later
-phases will add SQLite control-plane metadata, the MiniBase API and dashboard,
-database backups, project/database attachments, and private MiniDeploy
-integration. Those features are future architecture, not current behavior.
+The API listens on `127.0.0.1:9100` by default and is intentionally read-only and
+loopback-only:
+
+```text
+GET /health
+GET /api/v1/status
+GET /api/v1/databases
+GET /api/v1/databases/{id}
+```
+
+Build and run it locally with:
+
+```bash
+go build ./...
+go run ./cmd/minibase
+```
+
+Command-line overrides are available for development and tests:
+
+```text
+-listen 127.0.0.1:9100
+-metadata-db /srv/minibase/data/minibase.db
+```
+
+Non-loopback listen addresses are rejected. The default SQLite file and its WAL
+and shared-memory companions are ignored by Git.
+
+Phase 2 does not create PostgreSQL application databases or roles. PostgreSQL
+provisioning comes in Phase 3. The dashboard, backups, public routing, and
+MiniDeploy integration also remain future work.

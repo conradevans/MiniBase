@@ -3,6 +3,10 @@ secrets/*
 !secrets/.gitkeep
 
 # SQLite control-plane data
+data/minibase.db
+data/minibase.db-wal
+data/minibase.db-shm
+data/minibase.db-journal
 data/*.db
 data/*.db-*
 data/*.sqlite
@@ -17,6 +21,10 @@ backups/*
 *.dump
 *.sql
 *.sql.gz
+
+# Go output
+/minibase
+/coverage.out
 
 # Logs
 *.log
