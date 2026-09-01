@@ -18,7 +18,7 @@ container must not remove the volume.
 The Go control-plane process uses the standard library HTTP
 server. It listens on `127.0.0.1:9100` by default and accepts only loopback
 addresses. There is no Caddy route, Cloudflare route, public listener, or systemd
-service in Phase 3.
+service in Phase 4.
 
 Control-plane metadata is stored in SQLite at
 `/srv/minibase/data/minibase.db` by default. SQLite is not an application
@@ -45,6 +45,48 @@ POST /api/v1/databases
 The POST body accepts only `displayName`. Responses never include PostgreSQL role
 names, passwords, credential paths, administrator information, or connection
 strings. No update or delete endpoint is exposed.
+
+## React dashboard and HTTP boundary
+
+Phase 4 adds a React/Vite browser application under `frontend/`. Vite emits the
+production build to `frontend/dist`; generated dependencies, build output, and
+coverage are not committed. The Go process serves that build from the directory
+selected by `-frontend-dir`, which defaults to
+`/srv/minibase/frontend/dist`. Go builds do not depend on an existing frontend
+build and no generated files are embedded in the binary.
+
+API dispatch takes precedence over frontend routing. Unknown `/api/` paths
+remain JSON 404 responses. The frontend handler serves only regular files from
+the configured root, only under `/assets/`, and only the explicit application
+routes `/`, `/guest`, `/admin`, `/admin/databases`, and
+`/admin/databases/{id}`. Rooted filesystem access, path validation, dotfile
+rejection, and the lack of a directory-listing fallback prevent the dashboard
+handler from exposing files outside the build directory. A missing build yields
+a safe service-unavailable response for dashboard routes while `/health` and API
+behavior remain independent.
+
+The dashboard contains an Overview, database list, database detail, and database
+creation workflow. Backups and Activity appear only as unavailable future
+navigation. Database detail describes future Connections, Backups, Activity,
+and Settings capabilities without exposing credentials or presenting deletion
+controls.
+
+Guest mode is a server-side response boundary, not merely a React filter. Its
+read-only endpoints are:
+
+```text
+GET /api/v1/guest/status
+GET /api/v1/guest/databases
+```
+
+Guest database objects contain exactly `id`, `displayName`, and `status`.
+Administrative routes continue to use the Phase 3 APIs, including the real
+database provisioning endpoint. Browser response adapters also allowlist known
+fields and centralized error handling does not render raw backend details.
+
+MiniBase remains loopback-only. The `/guest` and `/admin` route names do not
+provide authentication or authorization. MiniBase must not be publicly routed
+until a later Cloudflare Access and backend authorization phase is complete.
 
 ## PostgreSQL provisioning
 
@@ -105,11 +147,11 @@ recreate, repair, or delete PostgreSQL resources.
 
 ## Future architecture
 
-The following capabilities are planned and are not implemented in Phase 3:
+The following capabilities are planned and are not implemented in Phase 4:
 
 - MiniDeploy will later request project database attachments privately and
   inject the resulting `DATABASE_URL` into application runtime environments.
-- Backups will remain on the Dell and will be managed independently from
+- Phase 5 will add backups and restores on the Dell, managed independently from
   application containers.
 - Database deletion is intentionally absent until explicit backup and deletion
   safety are designed. Deleting an application will not implicitly delete its
@@ -119,5 +161,5 @@ The following capabilities are planned and are not implemented in Phase 3:
 - Standalone databases may be created first and attached to projects later.
 - Friendly display names will map to validated, collision-safe internal IDs,
   PostgreSQL database names, and role names.
-- A dashboard and any public management surface will be introduced only in a
-  later phase with an explicit authorization design.
+- Any public management surface requires Cloudflare Access and an explicit
+  backend authorization design in a later phase.

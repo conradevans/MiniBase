@@ -61,7 +61,7 @@ func run() int {
 		return 1
 	}
 
-	handler := api.New(store, provisioningService, logger)
+	handler := api.New(store, provisioningService, cfg.FrontendDir, logger)
 	server := api.HTTPServer(cfg.ListenAddress, handler)
 	listener, err := net.Listen("tcp", cfg.ListenAddress)
 	if err != nil {

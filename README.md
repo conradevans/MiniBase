@@ -102,5 +102,62 @@ resources.
 
 The create API remains loopback-only. Database deletion is intentionally not
 exposed in Phase 3. Backups and delete safety, MiniDeploy integration and
-`DATABASE_URL` injection, public/admin routing, systemd deployment, and a React
-dashboard remain future work.
+`DATABASE_URL` injection, public/admin authorization, and systemd deployment
+remain future work.
+
+## Phase 4: local React dashboard
+
+Phase 4 adds a React/Vite dashboard served by the existing Go control plane.
+Build the browser application before starting MiniBase:
+
+```bash
+cd frontend
+npm ci
+npm test -- --run
+npm run lint
+npm run build
+cd ..
+go run ./cmd/minibase
+```
+
+The default frontend directory is `/srv/minibase/frontend/dist`. Development or
+test builds can be selected with the `-frontend-dir` flag. A missing build is
+reported safely without affecting the health or API endpoints.
+
+The dashboard routes are:
+
+```text
+/                         product landing
+/guest                    read-only Guest view
+/admin                    administrative overview
+/admin/databases          database list and creation
+/admin/databases/{id}     safe database metadata
+```
+
+The Guest view uses dedicated read-only endpoints with an allowlisted response:
+
+```text
+GET /api/v1/guest/status
+GET /api/v1/guest/databases
+```
+
+Guest database responses contain only `id`, `displayName`, and `status`. The
+administrative UI uses the existing Go API and can provision a database from a
+display name. Neither UI displays generated roles, passwords, secret paths,
+administrator details, or connection strings.
+
+MiniBase remains bound to `127.0.0.1:9100`. The `/guest` and `/admin` names are
+navigation only and are **not an authentication boundary** in Phase 4. Access
+the dashboard through localhost or SSH port forwarding. Do not route MiniBase
+publicly until the future Cloudflare Access and backend authorization phase is
+implemented.
+
+Phase 4 intentionally does not implement:
+
+- backups or restores (planned for Phase 5);
+- database deletion;
+- credential display or rotation;
+- MiniDeploy database attachment or `DATABASE_URL` injection;
+- public routing or authentication.
+
+Generated frontend dependencies, build output, and coverage are ignored by Git.

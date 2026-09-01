@@ -33,13 +33,19 @@ type Server struct {
 	store       metadataReader
 	provisioner databaseProvisioner
 	logger      *slog.Logger
+	frontend    http.Handler
 }
 
-func New(store metadataReader, provisioner databaseProvisioner, logger *slog.Logger) *Server {
+func New(store metadataReader, provisioner databaseProvisioner, frontendDirectory string, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return &Server{store: store, provisioner: provisioner, logger: logger}
+	return &Server{
+		store:       store,
+		provisioner: provisioner,
+		frontend:    newFrontendHandler(frontendDirectory),
+		logger:      logger,
+	}
 }
 
 func HTTPServer(address string, handler http.Handler) *http.Server {

@@ -26,6 +26,11 @@ backups/*
 /minibase
 /coverage.out
 
+# Frontend output and dependencies
+/frontend/node_modules/
+/frontend/dist/
+/frontend/coverage/
+
 # Logs
 *.log
 logs/

@@ -38,6 +38,17 @@ type statusResponse struct {
 	SchemaVersion    int    `json:"schemaVersion"`
 }
 
+type guestStatusResponse struct {
+	Service string `json:"service"`
+	Status  string `json:"status"`
+}
+
+type guestDatabaseResponse struct {
+	ID          string                  `json:"id"`
+	DisplayName string                  `json:"displayName"`
+	Status      metadata.DatabaseStatus `json:"status"`
+}
+
 type createDatabaseRequest struct {
 	DisplayName string `json:"displayName"`
 }
@@ -51,6 +62,10 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 		s.requireGet(response, request, s.handleHealth)
 	case request.URL.Path == "/api/v1/status":
 		s.requireGet(response, request, s.handleStatus)
+	case request.URL.Path == "/api/v1/guest/status":
+		s.requireGet(response, request, s.handleGuestStatus)
+	case request.URL.Path == "/api/v1/guest/databases":
+		s.requireGet(response, request, s.handleGuestDatabases)
 	case request.URL.Path == "/api/v1/databases":
 		switch request.Method {
 		case http.MethodGet:
@@ -73,8 +88,10 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 			return
 		}
 		s.handleGetDatabase(response, request, id)
-	default:
+	case strings.HasPrefix(request.URL.Path, "/api/"):
 		writeError(response, http.StatusNotFound, "not_found", "resource not found")
+	default:
+		s.frontend.ServeHTTP(response, request)
 	}
 }
 
@@ -127,6 +144,37 @@ func (s *Server) handleListDatabases(response http.ResponseWriter, request *http
 		return
 	}
 	writeJSON(response, http.StatusOK, databases)
+}
+
+func (s *Server) handleGuestStatus(response http.ResponseWriter, request *http.Request) {
+	if err := s.store.Ping(request.Context()); err != nil {
+		s.logger.Error("guest status check failed", "component", "metadata_database")
+		writeError(response, http.StatusServiceUnavailable, "service_unavailable", "service unavailable")
+		return
+	}
+	writeJSON(response, http.StatusOK, guestStatusResponse{
+		Service: "minibase",
+		Status:  "ok",
+	})
+}
+
+func (s *Server) handleGuestDatabases(response http.ResponseWriter, request *http.Request) {
+	databases, err := s.store.ListDatabases(request.Context())
+	if err != nil {
+		s.logger.Error("guest database listing failed")
+		writeError(response, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+
+	guestDatabases := make([]guestDatabaseResponse, 0, len(databases))
+	for _, database := range databases {
+		guestDatabases = append(guestDatabases, guestDatabaseResponse{
+			ID:          database.ID,
+			DisplayName: database.DisplayName,
+			Status:      database.Status,
+		})
+	}
+	writeJSON(response, http.StatusOK, guestDatabases)
 }
 
 func (s *Server) handleGetDatabase(response http.ResponseWriter, request *http.Request, id string) {
