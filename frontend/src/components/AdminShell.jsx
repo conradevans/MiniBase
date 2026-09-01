@@ -33,9 +33,13 @@ export default function AdminShell({ active, navigate, children }) {
               >
                 Databases
               </AppLink>
-              <span className="nav-item unavailable" aria-disabled="true">
-                Backups <small>Later</small>
-              </span>
+              <AppLink
+                className={active === 'backups' ? 'nav-item active' : 'nav-item'}
+                href="/admin/backups"
+                navigate={navigate}
+              >
+                Backups
+              </AppLink>
               <span className="nav-item unavailable" aria-disabled="true">
                 Activity <small>Later</small>
               </span>

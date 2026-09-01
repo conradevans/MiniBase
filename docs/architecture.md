@@ -100,7 +100,7 @@ Phase 3 separates provisioning into four responsibilities:
   credentials.
 
 Each provisioned database receives generated identifiers of the form
-`db_<32 lowercase hex>`, `mb_db_<32 lowercase hex>`, and
+`database_<32 lowercase hex>`, `mb_db_<32 lowercase hex>`, and
 `mb_role_<32 lowercase hex>`. Display names never become SQL identifiers. The
 dedicated role has LOGIN but is explicitly denied superuser, database creation,
 role creation, replication, and row-level-security bypass capabilities.
@@ -145,14 +145,72 @@ privileges, and credential-file presence. A complete match becomes `ready`; an
 absent, partial, or inconsistent state becomes `error`. Reconciliation does not
 recreate, repair, or delete PostgreSQL resources.
 
+## Backup and restore architecture
+
+Schema version 3 adds a `backups` table related to `databases` with a
+restricting foreign key. Records contain only generated IDs, `manual`,
+`automatic`, or `pre_restore` kind, `creating`, `ready`, or `error`
+status, byte size, and timestamps. Archive content and paths remain outside
+SQLite; credentials and connection strings never enter backup metadata.
+
+The filesystem adapter derives every archive path solely from validated
+MiniBase database and backup IDs. It uses rooted filesystem operations,
+owner-restricted directories, a mode-0600 partial archive, custom-format
+verification, filesystem sync, and a no-overwrite atomic hard-link install.
+Deletion targets exactly one validated metadata-backed archive and never uses a
+recursive removal. Retention leaves metadata intact if archive deletion cannot
+be confirmed.
+
+The PostgreSQL adapter directly executes `docker exec -i minibase-postgres`
+with argument arrays and archive streams on stdin/stdout; it does not invoke a
+shell or put passwords in process arguments. Dumps use custom format without
+ownership or ACL restoration data. Verification uses `pg_restore --list`.
+Restore uses `--single-transaction --no-owner --no-acl --role` to make the
+existing MiniBase application role own restored objects without creating roles
+or importing archived grants.
+
+Backup and restore workflows are serialized in-process. Manual and automatic
+backup creation writes `creating` metadata, dumps and verifies a partial
+archive, installs it atomically, then marks metadata `ready`. Restore-as-new
+verifies before provisioning, restores into a newly generated isolated
+resource, reapplies privilege restrictions, and compensates only that new
+resource on failure.
+
+Replace-current always creates and verifies a retained pre-restore safety
+backup before destructive work. It marks the target `error` before resetting
+objects owned by the exact target role; this intentionally fails closed across
+a process crash because Phase 3 startup reconciliation only examines
+`provisioning` records. A successful restore reapplies and verifies database,
+schema, role, ownership, and PUBLIC restrictions before returning the same
+resource to `ready`. Target IDs, internal names, roles, and credentials remain
+unchanged.
+
+Automatic eligibility uses UTC calendar days and treats any automatic attempt
+on the current day as already handled, making repeated invocations idempotent.
+Retention keeps the newest archive for seven distinct daily windows and four
+older distinct ISO-week windows. It prunes ready automatic backups only;
+manual, pre-restore, creating, and error records are retained. The
+`-run-due-backups` CLI mode is suitable for a future timer, but Phase 5 does
+not install or claim a persistent scheduler.
+
+The React dashboard exposes a real backup inventory and per-database backup
+section. Restore-as-new is selected by default. Replacement requires selecting
+the exact ready database and typing its display name, while explaining the
+mandatory retained safety backup. Guest endpoints remain database-status only
+and expose no backup IDs, sizes, or mutations.
+
+Archives live only under `/srv/minibase/backups` on the Dell. This protects
+against logical/application failure, not loss of the Dell SSD or other hardware.
+Off-Dell backup is future work.
+
 ## Future architecture
 
-The following capabilities are planned and are not implemented in Phase 4:
+The following capabilities are planned and are not implemented in Phase 5:
 
 - MiniDeploy will later request project database attachments privately and
   inject the resulting `DATABASE_URL` into application runtime environments.
-- Phase 5 will add backups and restores on the Dell, managed independently from
-  application containers.
+- Persistent scheduler activation and off-Dell backup remain future
+  operational work.
 - Database deletion is intentionally absent until explicit backup and deletion
   safety are designed. Deleting an application will not implicitly delete its
   database.

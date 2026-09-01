@@ -20,6 +20,14 @@ func DatabaseID() (string, error) {
 	return "database_" + suffix, nil
 }
 
+func BackupID() (string, error) {
+	suffix, err := randomSuffix()
+	if err != nil {
+		return "", fmt.Errorf("generate backup ID: %w", err)
+	}
+	return "backup_" + suffix, nil
+}
+
 func DatabaseInternalName() (string, error) {
 	suffix, err := randomSuffix()
 	if err != nil {
@@ -38,6 +46,10 @@ func RoleInternalName() (string, error) {
 
 func ValidDatabaseID(value string) bool {
 	return validPrefixedHex(value, "database_")
+}
+
+func ValidBackupID(value string) bool {
+	return validPrefixedHex(value, "backup_")
 }
 
 func ValidDatabaseInternalName(value string) bool {

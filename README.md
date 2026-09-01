@@ -131,7 +131,8 @@ The dashboard routes are:
 /guest                    read-only Guest view
 /admin                    administrative overview
 /admin/databases          database list and creation
-/admin/databases/{id}     safe database metadata
+/admin/databases/{id}     safe database metadata and backups
+/admin/backups            backup inventory and restore controls
 ```
 
 The Guest view uses dedicated read-only endpoints with an allowlisted response:
@@ -152,12 +153,71 @@ the dashboard through localhost or SSH port forwarding. Do not route MiniBase
 publicly until the future Cloudflare Access and backend authorization phase is
 implemented.
 
-Phase 4 intentionally does not implement:
+Phase 4 intentionally did not implement backups or restores. Phase 5 adds
+those workflows while the following remain unavailable:
 
-- backups or restores (planned for Phase 5);
 - database deletion;
 - credential display or rotation;
 - MiniDeploy database attachment or `DATABASE_URL` injection;
 - public routing or authentication.
 
 Generated frontend dependencies, build output, and coverage are ignored by Git.
+
+## Phase 5: PostgreSQL backups and restore
+
+Phase 5 stores PostgreSQL custom-format archives only on the Dell under:
+
+```text
+/srv/minibase/backups/<database_id>/<backup_id>.dump
+```
+
+Backup IDs are cryptographically random `backup_<32 lowercase hex>` resource
+identifiers. The root and per-database directories are mode 0700, final and
+temporary archives are mode 0600, creation is verified before an atomic
+no-overwrite install, and failed partial archives are removed. SQLite schema
+version 3 stores only the safe backup resource ID, database ID, kind, status,
+size, and timestamps. It never stores an archive path or credential.
+
+The loopback administrative API adds:
+
+```text
+GET  /api/v1/backups
+GET  /api/v1/backups/{id}
+GET  /api/v1/databases/{id}/backups
+POST /api/v1/databases/{id}/backups
+POST /api/v1/backups/{id}/restore
+```
+
+Manual backups use `pg_dump --format=custom --no-owner --no-acl` inside the
+existing `minibase-postgres` container. MiniBase requires a nonempty archive
+that `pg_restore --list` can inspect before marking it ready. Restore uses
+`--no-owner --no-acl --role <target-role>`, so archived ownership and ACLs
+cannot create roles or override MiniBase's isolated per-database owner model.
+
+Restore as new is the safe default: MiniBase provisions a fresh database, role,
+and credential, restores the selected archive, reapplies and verifies security
+properties, and leaves the source untouched. Replace-current is destructive:
+MiniBase first creates and verifies a retained `pre_restore` safety backup,
+marks the target unavailable, resets only that target's owned objects, restores
+into the same database and role, and preserves its resource ID and credential.
+An interrupted or failed replacement remains `error`; startup reconciliation
+cannot incorrectly promote it to ready.
+
+Daily automatic eligibility and retention are implemented but no persistent
+scheduler is installed. Run the idempotent one-shot operation with:
+
+```bash
+go run ./cmd/minibase -run-due-backups
+```
+
+It creates no more than one automatic attempt per database per UTC day and
+retains seven daily plus four older weekly automatic archives. Manual and
+pre-restore backups are never automatically pruned in Phase 5. Configure a
+different archive root for development or acceptance with `-backup-root`.
+
+These backups protect against logical and application errors only. Because they
+remain on the same Dell, they do **not** protect against SSD or other hardware
+failure. Off-Dell/external-drive backup and persistent scheduler activation are
+future operational work. Database deletion, credential rotation, MiniDeploy
+attachment, `DATABASE_URL` injection, public routing, and authentication also
+remain out of scope.

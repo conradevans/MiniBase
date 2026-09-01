@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 3
 
 type migration struct {
 	version    int
@@ -61,6 +61,39 @@ var migrations = []migration{
 			`CREATE UNIQUE INDEX databases_role_name_unique
 				ON databases(role_name)
 				WHERE role_name IS NOT NULL`,
+		},
+	},
+	{
+		version: 3,
+		statements: []string{
+			`CREATE TABLE backups (
+				id TEXT PRIMARY KEY
+					CHECK (
+						length(id) = 39
+						AND substr(id, 1, 7) = 'backup_'
+						AND id = lower(id)
+						AND id NOT GLOB '*[^a-z0-9_]*'
+					),
+				database_id TEXT NOT NULL
+					REFERENCES databases(id) ON DELETE RESTRICT,
+				kind TEXT NOT NULL
+					CHECK (kind IN ('manual', 'automatic', 'pre_restore')),
+				status TEXT NOT NULL
+					CHECK (status IN ('creating', 'ready', 'error')),
+				size_bytes INTEGER NOT NULL DEFAULT 0
+					CHECK (size_bytes >= 0),
+				created_at TEXT NOT NULL,
+				completed_at TEXT,
+				CHECK (
+					(status = 'creating' AND size_bytes = 0 AND completed_at IS NULL)
+					OR (status = 'ready' AND size_bytes > 0 AND completed_at IS NOT NULL)
+					OR (status = 'error' AND size_bytes = 0 AND completed_at IS NOT NULL)
+				)
+			)`,
+			`CREATE INDEX backups_database_created
+				ON backups(database_id, created_at DESC, id DESC)`,
+			`CREATE INDEX backups_kind_status_created
+				ON backups(kind, status, created_at DESC, id DESC)`,
 		},
 	},
 }

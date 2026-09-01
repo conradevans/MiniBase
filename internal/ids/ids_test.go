@@ -13,6 +13,7 @@ func TestGeneratedIdentifiers(t *testing.T) {
 		generator func() (string, error)
 	}{
 		{name: "database ID", prefix: "database_", generator: DatabaseID},
+		{name: "backup ID", prefix: "backup_", generator: BackupID},
 		{name: "database internal name", prefix: "mb_db_", generator: DatabaseInternalName},
 		{name: "role internal name", prefix: "mb_role_", generator: RoleInternalName},
 	}
@@ -53,5 +54,29 @@ func TestDatabaseIDUniqueness(t *testing.T) {
 			t.Fatalf("duplicate ID generated: %q", value)
 		}
 		seen[value] = struct{}{}
+	}
+}
+
+func TestBackupIDValidationAndUniqueness(t *testing.T) {
+	const sampleSize = 4096
+	seen := make(map[string]struct{}, sampleSize)
+	for range sampleSize {
+		value, err := BackupID()
+		if err != nil {
+			t.Fatalf("BackupID() error = %v", err)
+		}
+		if !ValidBackupID(value) {
+			t.Fatalf("ValidBackupID(%q) = false", value)
+		}
+		if _, exists := seen[value]; exists {
+			t.Fatalf("duplicate backup ID generated: %q", value)
+		}
+		seen[value] = struct{}{}
+	}
+
+	for _, invalid := range []string{"", ".", "..", "backup_", "backup_ABCDEF0123456789abcdef0123456789", "backup_0123456789abcdef0123456789abcdeg", "../backup_0123456789abcdef0123456789abcdef"} {
+		if ValidBackupID(invalid) {
+			t.Fatalf("ValidBackupID(%q) = true", invalid)
+		}
 	}
 }

@@ -30,6 +30,104 @@ func TestProvisionDatabaseSuccess(t *testing.T) {
 	}
 }
 
+func TestProvisionDatabaseForRestoreLeavesResourceProvisioning(t *testing.T) {
+	fixture := newServiceFixture()
+	database, err := fixture.service.ProvisionDatabaseForRestore(context.Background(), "Recovered")
+	if err != nil {
+		t.Fatalf("ProvisionDatabaseForRestore() error = %v", err)
+	}
+	if database.Status != metadata.StatusProvisioning {
+		t.Fatalf("status = %q, want provisioning", database.Status)
+	}
+	if len(fixture.metadata.statuses) != 0 {
+		t.Fatalf("status updates = %v, want none", fixture.metadata.statuses)
+	}
+}
+
+func TestFinalizeRestoredDatabaseReappliesSecurityAndMarksReady(t *testing.T) {
+	fixture := newServiceFixture()
+	record, err := fixture.service.ProvisionDatabaseForRestore(context.Background(), "Recovered")
+	if err != nil {
+		t.Fatalf("ProvisionDatabaseForRestore() error = %v", err)
+	}
+	fixture.postgres.configured = false
+	ready, err := fixture.service.FinalizeRestoredDatabase(context.Background(), record)
+	if err != nil {
+		t.Fatalf("FinalizeRestoredDatabase() error = %v", err)
+	}
+	if !fixture.postgres.configured || ready.Status != metadata.StatusReady {
+		t.Fatalf("configured=%v database=%#v", fixture.postgres.configured, ready)
+	}
+}
+
+func TestMarkDatabaseRestoringFailsClosedAcrossRestart(t *testing.T) {
+	fixture := newServiceFixture()
+	record, err := fixture.service.ProvisionDatabase(context.Background(), "Existing")
+	if err != nil {
+		t.Fatalf("ProvisionDatabase() error = %v", err)
+	}
+	restoring, err := fixture.service.MarkDatabaseRestoring(context.Background(), record.ID)
+	if err != nil {
+		t.Fatalf("MarkDatabaseRestoring() error = %v", err)
+	}
+	if restoring.Status != metadata.StatusError {
+		t.Fatalf("restoring status = %q, want fail-closed error", restoring.Status)
+	}
+	statusCount := len(fixture.metadata.statuses)
+	if err := fixture.service.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if len(fixture.metadata.statuses) != statusCount {
+		t.Fatal("startup reconciliation incorrectly marked an interrupted restore ready")
+	}
+}
+
+func TestCleanupRestoreTargetRemovesOnlyExactProvisioningResource(t *testing.T) {
+	fixture := newServiceFixture()
+	record, err := fixture.service.ProvisionDatabaseForRestore(context.Background(), "Recovered")
+	if err != nil {
+		t.Fatalf("ProvisionDatabaseForRestore() error = %v", err)
+	}
+	if err := fixture.service.CleanupRestoreTarget(record); err != nil {
+		t.Fatalf("CleanupRestoreTarget() error = %v", err)
+	}
+	if !fixture.metadata.deleted || !fixture.credentials.deleted {
+		t.Fatal("metadata or credential not removed")
+	}
+	if len(fixture.postgres.droppedDatabases) != 1 || fixture.postgres.droppedDatabases[0] != record.InternalName ||
+		len(fixture.postgres.droppedRoles) != 1 || fixture.postgres.droppedRoles[0] != record.RoleName {
+		t.Fatalf("unexpected cleanup: databases=%v roles=%v", fixture.postgres.droppedDatabases, fixture.postgres.droppedRoles)
+	}
+}
+
+func TestCleanupRestoreTargetRejectsReadyOrMismatchedResource(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*serviceFixture, *metadata.Database)
+	}{
+		{name: "ready", mutate: func(f *serviceFixture, _ *metadata.Database) { f.metadata.record.Status = metadata.StatusReady }},
+		{name: "mismatched role", mutate: func(_ *serviceFixture, record *metadata.Database) {
+			record.RoleName = "mb_role_ffffffffffffffffffffffffffffffff"
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newServiceFixture()
+			record, err := fixture.service.ProvisionDatabaseForRestore(context.Background(), "Recovered")
+			if err != nil {
+				t.Fatalf("ProvisionDatabaseForRestore() error = %v", err)
+			}
+			test.mutate(&fixture, &record)
+			if err := fixture.service.CleanupRestoreTarget(record); !errors.Is(err, ErrProvisioning) {
+				t.Fatalf("CleanupRestoreTarget() error = %v, want ErrProvisioning", err)
+			}
+			if fixture.metadata.deleted || fixture.credentials.deleted ||
+				len(fixture.postgres.droppedDatabases) != 0 || len(fixture.postgres.droppedRoles) != 0 {
+				t.Fatal("cleanup touched resources after strict identity check failed")
+			}
+		})
+	}
+}
 func TestSecretWriteFailureRemovesMetadataWithoutTouchingPostgres(t *testing.T) {
 	fixture := newServiceFixture()
 	fixture.credentials.createErr = errors.New("secret write failed")
@@ -203,6 +301,13 @@ func (store *fakeMetadata) CreateProvisioningDatabase(_ context.Context, input m
 	store.record = metadata.Database{
 		ID: input.ID, DisplayName: input.DisplayName, InternalName: input.InternalName,
 		RoleName: input.RoleName, Status: metadata.StatusProvisioning,
+	}
+	return store.record, nil
+}
+
+func (store *fakeMetadata) GetDatabase(_ context.Context, id string) (metadata.Database, error) {
+	if store.record.ID != id {
+		return metadata.Database{}, metadata.ErrNotFound
 	}
 	return store.record, nil
 }

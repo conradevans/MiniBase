@@ -1,6 +1,7 @@
 const labels = {
   metadata_only: 'Metadata only',
   provisioning: 'Provisioning',
+  creating: 'Creating',
   ready: 'Ready',
   error: 'Error',
 }

@@ -24,7 +24,7 @@ func testServer(t *testing.T) (*Server, *metadata.Store) {
 	t.Cleanup(func() {
 		_ = store.Close()
 	})
-	return New(store, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil))), store
+	return New(store, nil, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil))), store
 }
 
 func request(t *testing.T, server http.Handler, method, path string) *httptest.ResponseRecorder {

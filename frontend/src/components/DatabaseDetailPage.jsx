@@ -1,13 +1,36 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { toAdminDatabase } from '../api/admin'
+import { toAdminBackup, toAdminDatabase } from '../api/admin'
 import { safeErrorMessage } from '../api/request'
 import { formatTimestamp } from '../utils/format'
 import AppLink from './AppLink'
+import BackupList from './BackupList'
+import RestoreBackupDialog from './RestoreBackupDialog'
 import StatusBadge from './StatusBadge'
 
 export default function DatabaseDetailPage({ api, databaseID, navigate }) {
   const [state, setState] = useState({ loading: true, error: '', database: null })
+  const [backups, setBackups] = useState([])
+  const [databases, setDatabases] = useState([])
+  const [backupLoading, setBackupLoading] = useState(true)
+  const [backupPending, setBackupPending] = useState(false)
+  const [backupError, setBackupError] = useState('')
+  const [backupNotice, setBackupNotice] = useState('')
+  const [selectedBackup, setSelectedBackup] = useState(null)
+  const createBackupButtonRef = useRef(null)
+
+  const loadBackups = useCallback(async () => {
+    setBackupLoading(true)
+    try {
+      const result = await api.getDatabaseBackups(databaseID)
+      setBackups(result.map(toAdminBackup))
+      setBackupError('')
+    } catch (error) {
+      setBackupError(safeErrorMessage(error, 'Unable to load database backups.'))
+    } finally {
+      setBackupLoading(false)
+    }
+  }, [api, databaseID])
 
   useEffect(() => {
     let active = true
@@ -32,6 +55,60 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
       active = false
     }
   }, [api, databaseID])
+
+  useEffect(() => {
+    void loadBackups()
+  }, [loadBackups])
+
+  useEffect(() => {
+    let active = true
+    api.getDatabases()
+      .then((result) => {
+        if (active) {
+          setDatabases(result.map(toAdminDatabase))
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDatabases([])
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [api])
+
+  async function createBackup() {
+    if (backupPending) {
+      return
+    }
+    setBackupPending(true)
+    setBackupError('')
+    setBackupNotice('')
+    try {
+      await api.createBackup(databaseID)
+      setBackupNotice('Verified manual backup created successfully.')
+      await loadBackups()
+    } catch (error) {
+      setBackupError(safeErrorMessage(error, 'MiniBase could not create this backup.'))
+    } finally {
+      setBackupPending(false)
+      window.setTimeout(() => createBackupButtonRef.current?.focus(), 0)
+    }
+  }
+
+  async function restoreBackup(input) {
+    const database = input.mode === 'new'
+      ? await api.restoreBackupAsNew(selectedBackup.id, input.displayName)
+      : await api.restoreBackupReplace(selectedBackup.id, input.targetDatabaseId)
+    const restored = toAdminDatabase(database)
+    setSelectedBackup(null)
+    setBackupNotice(`${restored.displayName} was restored successfully.`)
+    if (restored.id === databaseID) {
+      setState({ loading: false, error: '', database: restored })
+    }
+    await loadBackups()
+  }
 
   if (state.loading) {
     return <div className="empty-state">Loading database…</div>
@@ -63,7 +140,7 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
       <nav className="detail-tabs" aria-label="Database sections">
         <span className="active">Overview</span>
         <span>Connection</span>
-        <span className="unavailable">Backups · Later</span>
+        <a href="#backups">Backups</a>
         <span className="unavailable">Activity · Later</span>
         <span className="unavailable">Settings · Later</span>
       </nav>
@@ -96,11 +173,53 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
         </article>
       </section>
 
+      <section className="content-section database-backups" id="backups">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">VERIFIED LOCAL ARCHIVES</p>
+            <h2>Backups</h2>
+          </div>
+          <div className="page-actions">
+            <button className="button secondary" type="button" onClick={loadBackups} disabled={backupLoading || backupPending}>
+              {backupLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <button
+              className="button primary"
+              type="button"
+              onClick={createBackup}
+              disabled={backupPending || database.status !== 'ready'}
+              ref={createBackupButtonRef}
+            >
+              {backupPending ? 'Creating backup…' : 'Create Backup'}
+            </button>
+          </div>
+        </div>
+        {backupNotice ? <div className="notice success">{backupNotice}</div> : null}
+        {backupError ? <div className="notice error">{backupError}</div> : null}
+        {backupLoading && backups.length === 0 ? (
+          <div className="empty-state">Loading backups…</div>
+        ) : (
+          <BackupList
+            backups={backups}
+            emptyMessage="No backups for this database yet."
+            onRestore={setSelectedBackup}
+          />
+        )}
+      </section>
+
       <section className="future-grid">
-        <article><span>BACKUPS</span><strong>Coming in Phase 5</strong><p>Backup and restore workflows are not available yet.</p></article>
         <article><span>ACTIVITY</span><strong>Coming later</strong><p>Provisioning activity history is not available yet.</p></article>
         <article><span>SETTINGS</span><strong>Coming later</strong><p>Deletion is intentionally unavailable until dependency and backup safety exists.</p></article>
       </section>
+
+      {selectedBackup ? (
+        <RestoreBackupDialog
+          backup={selectedBackup}
+          databases={databases}
+          onClose={() => setSelectedBackup(null)}
+          onRestored={restoreBackup}
+        />
+      ) : null}
     </>
   )
 }

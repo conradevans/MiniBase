@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { createAdminApi, toAdminDatabase } from './admin'
+import { createAdminApi, toAdminBackup, toAdminDatabase } from './admin'
 
 const database = {
   id: 'database_0123456789abcdef0123456789abcdef',
@@ -12,6 +12,19 @@ const database = {
   roleName: 'must-not-survive',
   password: 'must-not-survive',
   credentialPath: '/must-not-survive',
+}
+
+const backup = {
+  id: 'backup_0123456789abcdef0123456789abcdef',
+  databaseId: database.id,
+  databaseDisplayName: database.displayName,
+  kind: 'manual',
+  status: 'ready',
+  sizeBytes: 42,
+  createdAt: '2026-09-01T01:00:00Z',
+  completedAt: '2026-09-01T01:01:00Z',
+  path: '/must-not-survive',
+  password: 'must-not-survive',
 }
 
 describe('admin API', () => {
@@ -57,6 +70,47 @@ describe('admin API', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ displayName: 'Scheduler' }),
+    })
+  })
+
+
+  test('allowlists backup fields and uses explicit backup API requests', async () => {
+    expect(Object.keys(toAdminBackup(backup))).toEqual([
+      'id',
+      'databaseId',
+      'databaseDisplayName',
+      'kind',
+      'status',
+      'sizeBytes',
+      'createdAt',
+      'completedAt',
+    ])
+    const requester = vi.fn()
+      .mockResolvedValueOnce([backup])
+      .mockResolvedValueOnce([backup])
+      .mockResolvedValueOnce(backup)
+      .mockResolvedValueOnce(database)
+      .mockResolvedValueOnce(database)
+    const api = createAdminApi(requester)
+
+    await api.getBackups()
+    await api.getDatabaseBackups(database.id)
+    await api.createBackup(database.id)
+    await api.restoreBackupAsNew(backup.id, 'Recovered')
+    await api.restoreBackupReplace(backup.id, database.id)
+
+    expect(requester).toHaveBeenNthCalledWith(1, '/api/v1/backups')
+    expect(requester).toHaveBeenNthCalledWith(2, `/api/v1/databases/${database.id}/backups`)
+    expect(requester).toHaveBeenNthCalledWith(3, `/api/v1/databases/${database.id}/backups`, { method: 'POST' })
+    expect(requester).toHaveBeenNthCalledWith(4, `/api/v1/backups/${backup.id}/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'new', displayName: 'Recovered' }),
+    })
+    expect(requester).toHaveBeenNthCalledWith(5, `/api/v1/backups/${backup.id}/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'replace', targetDatabaseId: database.id }),
     })
   })
 

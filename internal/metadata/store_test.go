@@ -321,8 +321,8 @@ func TestMigrationFromV1PreservesExistingMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SchemaVersion() error = %v", err)
 	}
-	if version != 2 {
-		t.Fatalf("schema version = %d, want 2", version)
+	if version != CurrentSchemaVersion {
+		t.Fatalf("schema version = %d, want %d", version, CurrentSchemaVersion)
 	}
 	database, err := store.GetDatabase(ctx, databaseID)
 	if err != nil {

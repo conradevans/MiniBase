@@ -80,7 +80,7 @@ func isFrontendRoute(requestPath string) bool {
 		normalized = strings.TrimSuffix(normalized, "/")
 	}
 	switch normalized {
-	case "/", "/guest", "/admin", "/admin/databases":
+	case "/", "/guest", "/admin", "/admin/databases", "/admin/backups":
 		return true
 	}
 

@@ -44,7 +44,7 @@ func TestRealPostgresProvisioningAndHTTPAcceptance(t *testing.T) {
 	}
 	postgres := provisioning.NewDockerPostgres()
 	service := provisioning.NewService(metadataStore, credentialStore, postgres)
-	handler := api.New(metadataStore, service, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := api.New(metadataStore, service, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	first := createDatabaseThroughHTTP(t, handler, "Phase 3 HTTP Acceptance")
 	firstInternal, err := metadataStore.GetDatabase(ctx, first.ID)

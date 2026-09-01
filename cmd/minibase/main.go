@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/conradevans/MiniBase/internal/api"
+	"github.com/conradevans/MiniBase/internal/backups"
 	"github.com/conradevans/MiniBase/internal/config"
 	"github.com/conradevans/MiniBase/internal/metadata"
 	"github.com/conradevans/MiniBase/internal/provisioning"
@@ -55,13 +56,34 @@ func run() int {
 		return 1
 	}
 
+	archiveStore, err := backups.NewFileStore(cfg.BackupRoot)
+	if err != nil {
+		logger.Error("backup archive store initialization failed")
+		return 1
+	}
+	backupService := backups.NewService(store, archiveStore, backups.NewDockerPostgres(), provisioningService)
+	if cfg.RunDueBackups {
+		result, err := backupService.RunDueAutomaticBackups(context.Background())
+		if err != nil {
+			logger.Error("automatic backup run failed")
+			return 1
+		}
+		logger.Info(
+			"automatic backup run complete",
+			"databases_checked", result.DatabasesChecked,
+			"backups_created", result.BackupsCreated,
+			"backups_pruned", result.BackupsPruned,
+		)
+		return 0
+	}
+
 	schemaVersion, err := store.SchemaVersion(context.Background())
 	if err != nil {
 		logger.Error("schema version check failed")
 		return 1
 	}
 
-	handler := api.New(store, provisioningService, cfg.FrontendDir, logger)
+	handler := api.New(store, provisioningService, backupService, cfg.FrontendDir, logger)
 	server := api.HTTPServer(cfg.ListenAddress, handler)
 	listener, err := net.Listen("tcp", cfg.ListenAddress)
 	if err != nil {

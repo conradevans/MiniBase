@@ -14,6 +14,7 @@ import (
 
 const (
 	databasesPathPrefix = "/api/v1/databases/"
+	backupsPathPrefix   = "/api/v1/backups/"
 	maxRequestBodyBytes = 4 << 10
 )
 
@@ -76,18 +77,12 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 			response.Header().Set("Allow", "GET, POST")
 			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		}
+	case request.URL.Path == "/api/v1/backups":
+		s.routeBackupCollection(response, request)
+	case strings.HasPrefix(request.URL.Path, backupsPathPrefix):
+		s.routeBackupResource(response, request)
 	case strings.HasPrefix(request.URL.Path, databasesPathPrefix):
-		id := strings.TrimPrefix(request.URL.Path, databasesPathPrefix)
-		if id == "" || strings.Contains(id, "/") {
-			writeError(response, http.StatusNotFound, "not_found", "resource not found")
-			return
-		}
-		if request.Method != http.MethodGet {
-			response.Header().Set("Allow", http.MethodGet)
-			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-			return
-		}
-		s.handleGetDatabase(response, request, id)
+		s.routeDatabaseResource(response, request)
 	case strings.HasPrefix(request.URL.Path, "/api/"):
 		writeError(response, http.StatusNotFound, "not_found", "resource not found")
 	default:

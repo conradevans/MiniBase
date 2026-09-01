@@ -1,6 +1,10 @@
 import { requestJSON } from './request'
 import {
+  requireBackupKind,
+  requireBackupStatus,
   requireDatabaseStatus,
+  requireNullableString,
+  requireNumber,
   requireRecord,
   requireString,
 } from './validation'
@@ -14,6 +18,20 @@ export function toAdminDatabase(value) {
     status: requireDatabaseStatus(database.status),
     createdAt: requireString(database.createdAt),
     updatedAt: requireString(database.updatedAt),
+  }
+}
+
+export function toAdminBackup(value) {
+  const backup = requireRecord(value)
+  return {
+    id: requireString(backup.id),
+    databaseId: requireString(backup.databaseId),
+    databaseDisplayName: requireString(backup.databaseDisplayName),
+    kind: requireBackupKind(backup.kind),
+    status: requireBackupStatus(backup.status),
+    sizeBytes: requireNumber(backup.sizeBytes),
+    createdAt: requireString(backup.createdAt),
+    completedAt: requireNullableString(backup.completedAt),
   }
 }
 
@@ -71,6 +89,59 @@ export function createAdminApi(requester = requestJSON) {
           },
           body: JSON.stringify({ displayName }),
         }),
+      )
+    },
+
+    async getBackups() {
+      const result = await requester('/api/v1/backups')
+      if (!Array.isArray(result)) {
+        throw new Error('invalid backup list')
+      }
+      return result.map(toAdminBackup)
+    },
+
+    async getDatabaseBackups(id) {
+      const result = await requester(
+        `/api/v1/databases/${encodeURIComponent(id)}/backups`,
+      )
+      if (!Array.isArray(result)) {
+        throw new Error('invalid backup list')
+      }
+      return result.map(toAdminBackup)
+    },
+
+    async createBackup(databaseId) {
+      return toAdminBackup(
+        await requester(
+          `/api/v1/databases/${encodeURIComponent(databaseId)}/backups`,
+          { method: 'POST' },
+        ),
+      )
+    },
+
+    async restoreBackupAsNew(backupId, displayName) {
+      return toAdminDatabase(
+        await requester(
+          `/api/v1/backups/${encodeURIComponent(backupId)}/restore`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'new', displayName }),
+          },
+        ),
+      )
+    },
+
+    async restoreBackupReplace(backupId, targetDatabaseId) {
+      return toAdminDatabase(
+        await requester(
+          `/api/v1/backups/${encodeURIComponent(backupId)}/restore`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'replace', targetDatabaseId }),
+          },
+        ),
       )
     },
   }

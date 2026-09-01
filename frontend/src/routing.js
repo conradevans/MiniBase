@@ -3,6 +3,7 @@ export const routes = {
   guest: '/guest',
   admin: '/admin',
   databases: '/admin/databases',
+  backups: '/admin/backups',
 }
 
 export function databaseDetailPath(id) {
@@ -20,6 +21,8 @@ export function resolveRoute(pathname) {
       return { screen: 'overview' }
     case routes.databases:
       return { screen: 'databases' }
+    case routes.backups:
+      return { screen: 'backups' }
     default:
       break
   }

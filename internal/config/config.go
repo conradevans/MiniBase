@@ -13,6 +13,7 @@ const (
 	DefaultListenAddress      = "127.0.0.1:9100"
 	DefaultMetadataDBPath     = "/srv/minibase/data/minibase.db"
 	DefaultDatabaseSecretRoot = "/srv/minibase/secrets/databases"
+	DefaultBackupRoot         = "/srv/minibase/backups"
 	DefaultFrontendDir        = "/srv/minibase/frontend/dist"
 )
 
@@ -20,7 +21,9 @@ type Config struct {
 	ListenAddress      string
 	MetadataDBPath     string
 	DatabaseSecretRoot string
+	BackupRoot         string
 	FrontendDir        string
+	RunDueBackups      bool
 }
 
 func Parse(args []string) (Config, error) {
@@ -28,7 +31,9 @@ func Parse(args []string) (Config, error) {
 	listenAddress := flags.String("listen", DefaultListenAddress, "loopback HTTP listen address")
 	metadataDBPath := flags.String("metadata-db", DefaultMetadataDBPath, "SQLite metadata database path")
 	databaseSecretRoot := flags.String("database-secrets", DefaultDatabaseSecretRoot, "application database credential root")
+	backupRoot := flags.String("backup-root", DefaultBackupRoot, "PostgreSQL backup archive root")
 	frontendDir := flags.String("frontend-dir", DefaultFrontendDir, "built dashboard directory")
+	runDueBackups := flags.Bool("run-due-backups", false, "run due automatic backups and retention, then exit")
 
 	if err := flags.Parse(args); err != nil {
 		return Config{}, err
@@ -48,6 +53,10 @@ func Parse(args []string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	absoluteBackupRoot, err := resolvePath("backup root", *backupRoot)
+	if err != nil {
+		return Config{}, err
+	}
 	absoluteFrontendDir, err := resolvePath("frontend directory", *frontendDir)
 	if err != nil {
 		return Config{}, err
@@ -57,7 +66,9 @@ func Parse(args []string) (Config, error) {
 		ListenAddress:      *listenAddress,
 		MetadataDBPath:     absoluteDBPath,
 		DatabaseSecretRoot: absoluteSecretRoot,
+		BackupRoot:         absoluteBackupRoot,
 		FrontendDir:        absoluteFrontendDir,
+		RunDueBackups:      *runDueBackups,
 	}, nil
 }
 

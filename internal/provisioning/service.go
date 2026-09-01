@@ -14,6 +14,7 @@ var ErrProvisioning = errors.New("database provisioning failed")
 
 type metadataStore interface {
 	CreateProvisioningDatabase(context.Context, metadata.ProvisioningDatabase) (metadata.Database, error)
+	GetDatabase(context.Context, string) (metadata.Database, error)
 	UpdateDatabaseStatus(context.Context, string, metadata.DatabaseStatus) (metadata.Database, error)
 	DeleteDatabaseMetadata(context.Context, string) error
 	ListProvisioningDatabases(context.Context) ([]metadata.Database, error)
@@ -48,6 +49,25 @@ func NewService(metadataStore metadataStore, credentials credentialStore, postgr
 }
 
 func (s *Service) ProvisionDatabase(ctx context.Context, displayName string) (metadata.Database, error) {
+	record, err := s.ProvisionDatabaseForRestore(ctx, displayName)
+	if err != nil {
+		return metadata.Database{}, err
+	}
+	ready, err := s.metadata.UpdateDatabaseStatus(ctx, record.ID, metadata.StatusReady)
+	if err != nil {
+		s.compensate(compensationState{
+			record:            record,
+			metadataCreated:   true,
+			credentialCreated: true,
+			roleCreated:       true,
+			databaseCreated:   true,
+		})
+		return metadata.Database{}, ErrProvisioning
+	}
+	return ready, nil
+}
+
+func (s *Service) ProvisionDatabaseForRestore(ctx context.Context, displayName string) (metadata.Database, error) {
 	normalizedName, err := metadata.NormalizeDisplayName(displayName)
 	if err != nil {
 		return metadata.Database{}, err
@@ -108,12 +128,77 @@ func (s *Service) ProvisionDatabase(ctx context.Context, displayName string) (me
 		return metadata.Database{}, ErrProvisioning
 	}
 
+	return record, nil
+}
+
+func (s *Service) FinalizeRestoredDatabase(ctx context.Context, record metadata.Database) (metadata.Database, error) {
+	if !ids.ValidDatabaseID(record.ID) ||
+		!ids.ValidDatabaseInternalName(record.InternalName) ||
+		!ids.ValidRoleInternalName(record.RoleName) {
+		return metadata.Database{}, ErrProvisioning
+	}
+	current, err := s.metadata.GetDatabase(ctx, record.ID)
+	if err != nil || current.ID != record.ID ||
+		current.InternalName != record.InternalName || current.RoleName != record.RoleName ||
+		(current.Status != metadata.StatusProvisioning && current.Status != metadata.StatusError) {
+		return metadata.Database{}, ErrProvisioning
+	}
+	if err := s.postgres.ConfigureDatabasePrivileges(ctx, record.InternalName, record.RoleName); err != nil {
+		return metadata.Database{}, ErrProvisioning
+	}
+	if err := s.verifyProvisionedState(ctx, record); err != nil {
+		return metadata.Database{}, ErrProvisioning
+	}
 	ready, err := s.metadata.UpdateDatabaseStatus(ctx, record.ID, metadata.StatusReady)
 	if err != nil {
-		s.compensate(state)
 		return metadata.Database{}, ErrProvisioning
 	}
 	return ready, nil
+}
+
+func (s *Service) MarkDatabaseRestoring(ctx context.Context, databaseID string) (metadata.Database, error) {
+	if !ids.ValidDatabaseID(databaseID) {
+		return metadata.Database{}, metadata.ErrInvalidIdentifier
+	}
+	record, err := s.metadata.UpdateDatabaseStatus(ctx, databaseID, metadata.StatusError)
+	if err != nil {
+		return metadata.Database{}, err
+	}
+	return record, nil
+}
+
+func (s *Service) MarkDatabaseError(ctx context.Context, databaseID string) error {
+	if !ids.ValidDatabaseID(databaseID) {
+		return metadata.ErrInvalidIdentifier
+	}
+	_, err := s.metadata.UpdateDatabaseStatus(ctx, databaseID, metadata.StatusError)
+	return err
+}
+
+func (s *Service) CleanupRestoreTarget(record metadata.Database) error {
+	if !ids.ValidDatabaseID(record.ID) ||
+		!ids.ValidDatabaseInternalName(record.InternalName) ||
+		!ids.ValidRoleInternalName(record.RoleName) {
+		return ErrProvisioning
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), s.compensationTimeout)
+	defer cancel()
+	current, err := s.metadata.GetDatabase(ctx, record.ID)
+	if err != nil || current.ID != record.ID ||
+		current.InternalName != record.InternalName || current.RoleName != record.RoleName ||
+		current.Status != metadata.StatusProvisioning {
+		return ErrProvisioning
+	}
+	if !s.compensate(compensationState{
+		record:            current,
+		metadataCreated:   true,
+		credentialCreated: true,
+		roleCreated:       true,
+		databaseCreated:   true,
+	}) {
+		return ErrProvisioning
+	}
+	return nil
 }
 
 func (s *Service) Reconcile(ctx context.Context) error {
@@ -173,7 +258,7 @@ type compensationState struct {
 	databaseCreated   bool
 }
 
-func (s *Service) compensate(state compensationState) {
+func (s *Service) compensate(state compensationState) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), s.compensationTimeout)
 	defer cancel()
 
@@ -195,10 +280,11 @@ func (s *Service) compensate(state compensationState) {
 	allExternalClean := databaseClean && roleClean && credentialClean
 	if state.metadataCreated && allExternalClean {
 		if err := s.metadata.DeleteDatabaseMetadata(ctx, state.record.ID); err == nil {
-			return
+			return true
 		}
 	}
 	if state.metadataCreated {
 		_, _ = s.metadata.UpdateDatabaseStatus(ctx, state.record.ID, metadata.StatusError)
 	}
+	return false
 }

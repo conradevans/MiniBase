@@ -19,6 +19,12 @@ func TestParseDefaults(t *testing.T) {
 	if cfg.DatabaseSecretRoot != DefaultDatabaseSecretRoot {
 		t.Fatalf("DatabaseSecretRoot = %q, want %q", cfg.DatabaseSecretRoot, DefaultDatabaseSecretRoot)
 	}
+	if cfg.BackupRoot != DefaultBackupRoot {
+		t.Fatalf("BackupRoot = %q, want %q", cfg.BackupRoot, DefaultBackupRoot)
+	}
+	if cfg.RunDueBackups {
+		t.Fatal("RunDueBackups = true, want false")
+	}
 	if cfg.FrontendDir != DefaultFrontendDir {
 		t.Fatalf("FrontendDir = %q, want %q", cfg.FrontendDir, DefaultFrontendDir)
 	}
@@ -27,8 +33,9 @@ func TestParseDefaults(t *testing.T) {
 func TestParseOverrides(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "metadata.db")
 	secretRoot := filepath.Join(t.TempDir(), "database-secrets")
+	backupRoot := filepath.Join(t.TempDir(), "backups")
 	frontendDir := filepath.Join(t.TempDir(), "frontend")
-	cfg, err := Parse([]string{"-listen", "127.0.0.1:0", "-metadata-db", dbPath, "-database-secrets", secretRoot, "-frontend-dir", frontendDir})
+	cfg, err := Parse([]string{"-listen", "127.0.0.1:0", "-metadata-db", dbPath, "-database-secrets", secretRoot, "-backup-root", backupRoot, "-frontend-dir", frontendDir, "-run-due-backups"})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -40,6 +47,12 @@ func TestParseOverrides(t *testing.T) {
 	}
 	if cfg.DatabaseSecretRoot != secretRoot {
 		t.Fatalf("DatabaseSecretRoot = %q, want %q", cfg.DatabaseSecretRoot, secretRoot)
+	}
+	if cfg.BackupRoot != backupRoot {
+		t.Fatalf("BackupRoot = %q, want %q", cfg.BackupRoot, backupRoot)
+	}
+	if !cfg.RunDueBackups {
+		t.Fatal("RunDueBackups = false, want true")
 	}
 	if cfg.FrontendDir != frontendDir {
 		t.Fatalf("FrontendDir = %q, want %q", cfg.FrontendDir, frontendDir)
