@@ -28,6 +28,14 @@ func BackupID() (string, error) {
 	return "backup_" + suffix, nil
 }
 
+func AttachmentID() (string, error) {
+	suffix, err := randomSuffix()
+	if err != nil {
+		return "", fmt.Errorf("generate attachment ID: %w", err)
+	}
+	return "attachment_" + suffix, nil
+}
+
 func DatabaseInternalName() (string, error) {
 	suffix, err := randomSuffix()
 	if err != nil {
@@ -50,6 +58,10 @@ func ValidDatabaseID(value string) bool {
 
 func ValidBackupID(value string) bool {
 	return validPrefixedHex(value, "backup_")
+}
+
+func ValidAttachmentID(value string) bool {
+	return validPrefixedHex(value, "attachment_")
 }
 
 func ValidDatabaseInternalName(value string) bool {

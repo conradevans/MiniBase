@@ -9,6 +9,19 @@ import {
   requireString,
 } from './validation'
 
+function toAdminAttachment(value) {
+  const attachment = requireRecord(value)
+  return {
+    id: requireString(attachment.id),
+    databaseId: requireString(attachment.databaseId),
+    consumerType: requireString(attachment.consumerType),
+    consumerRef: requireString(attachment.consumerRef),
+    bindingName: requireString(attachment.bindingName),
+    createdAt: requireString(attachment.createdAt),
+    updatedAt: requireString(attachment.updatedAt),
+  }
+}
+
 export function toAdminDatabase(value) {
   const database = requireRecord(value)
   return {
@@ -18,6 +31,9 @@ export function toAdminDatabase(value) {
     status: requireDatabaseStatus(database.status),
     createdAt: requireString(database.createdAt),
     updatedAt: requireString(database.updatedAt),
+    attachments: Array.isArray(database.attachments)
+      ? database.attachments.map(toAdminAttachment)
+      : [],
   }
 }
 

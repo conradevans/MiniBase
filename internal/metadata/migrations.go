@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const CurrentSchemaVersion = 3
+const CurrentSchemaVersion = 4
 
 type migration struct {
 	version    int
@@ -94,6 +94,37 @@ var migrations = []migration{
 				ON backups(database_id, created_at DESC, id DESC)`,
 			`CREATE INDEX backups_kind_status_created
 				ON backups(kind, status, created_at DESC, id DESC)`,
+		},
+	},
+	{
+		version: 4,
+		statements: []string{
+			`CREATE TABLE attachments (
+				id TEXT PRIMARY KEY
+					CHECK (
+						length(id) = 43
+						AND substr(id, 1, 11) = 'attachment_'
+						AND id = lower(id)
+						AND id NOT GLOB '*[^a-z0-9_]*'
+					),
+				database_id TEXT NOT NULL
+					REFERENCES databases(id) ON DELETE RESTRICT,
+				consumer_type TEXT NOT NULL CHECK (consumer_type = 'minideploy'),
+				consumer_ref TEXT NOT NULL
+					CHECK (
+						length(consumer_ref) BETWEEN 1 AND 63
+						AND consumer_ref = lower(consumer_ref)
+						AND consumer_ref NOT GLOB '*[^a-z0-9-]*'
+						AND substr(consumer_ref, 1, 1) GLOB '[a-z0-9]'
+						AND substr(consumer_ref, -1, 1) GLOB '[a-z0-9]'
+					),
+				binding_name TEXT NOT NULL CHECK (binding_name = 'primary'),
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				UNIQUE (consumer_type, consumer_ref, binding_name),
+				UNIQUE (database_id)
+			)`,
+			`CREATE INDEX attachments_database_id ON attachments(database_id)`,
 		},
 	},
 }

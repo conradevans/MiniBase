@@ -22,6 +22,9 @@ func TestParseDefaults(t *testing.T) {
 	if cfg.BackupRoot != DefaultBackupRoot {
 		t.Fatalf("BackupRoot = %q, want %q", cfg.BackupRoot, DefaultBackupRoot)
 	}
+	if cfg.IntegrationTokenPath != DefaultIntegrationTokenPath {
+		t.Fatalf("IntegrationTokenPath = %q, want %q", cfg.IntegrationTokenPath, DefaultIntegrationTokenPath)
+	}
 	if cfg.RunDueBackups {
 		t.Fatal("RunDueBackups = true, want false")
 	}
@@ -35,7 +38,8 @@ func TestParseOverrides(t *testing.T) {
 	secretRoot := filepath.Join(t.TempDir(), "database-secrets")
 	backupRoot := filepath.Join(t.TempDir(), "backups")
 	frontendDir := filepath.Join(t.TempDir(), "frontend")
-	cfg, err := Parse([]string{"-listen", "127.0.0.1:0", "-metadata-db", dbPath, "-database-secrets", secretRoot, "-backup-root", backupRoot, "-frontend-dir", frontendDir, "-run-due-backups"})
+	tokenPath := filepath.Join(t.TempDir(), "integration-token")
+	cfg, err := Parse([]string{"-listen", "127.0.0.1:0", "-metadata-db", dbPath, "-database-secrets", secretRoot, "-backup-root", backupRoot, "-frontend-dir", frontendDir, "-integration-token", tokenPath, "-run-due-backups"})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -56,6 +60,9 @@ func TestParseOverrides(t *testing.T) {
 	}
 	if cfg.FrontendDir != frontendDir {
 		t.Fatalf("FrontendDir = %q, want %q", cfg.FrontendDir, frontendDir)
+	}
+	if cfg.IntegrationTokenPath != tokenPath {
+		t.Fatalf("IntegrationTokenPath = %q, want %q", cfg.IntegrationTokenPath, tokenPath)
 	}
 }
 

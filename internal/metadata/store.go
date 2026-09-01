@@ -16,6 +16,7 @@ const sqliteBusyTimeoutMilliseconds = 5000
 
 type Store struct {
 	db                      *sql.DB
+	newAttachmentID         func() (string, error)
 	newBackupID             func() (string, error)
 	newDatabaseID           func() (string, error)
 	newDatabaseInternalName func() (string, error)
@@ -56,6 +57,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	return &Store{
 		db:                      db,
 		newBackupID:             newBackupID,
+		newAttachmentID:         newAttachmentID,
 		newDatabaseID:           newDatabaseID,
 		newDatabaseInternalName: newDatabaseInternalName,
 		now:                     time.Now,

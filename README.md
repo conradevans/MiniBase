@@ -218,6 +218,66 @@ different archive root for development or acceptance with `-backup-root`.
 These backups protect against logical and application errors only. Because they
 remain on the same Dell, they do **not** protect against SSD or other hardware
 failure. Off-Dell/external-drive backup and persistent scheduler activation are
-future operational work. Database deletion, credential rotation, MiniDeploy
-attachment, `DATABASE_URL` injection, public routing, and authentication also
-remain out of scope.
+future operational work. Database deletion, credential rotation, public
+routing, and browser authentication remain out of scope. The private MiniDeploy
+integration added after Phase 5 is described below.
+
+## Phase 6: private MiniDeploy integration
+
+Phase 6 adds first-class attachment resources and a deliberately private
+service-to-service API for MiniDeploy. SQLite schema version 4 adds an
+`attachments` table with stable `attachment_<32 lowercase hex>` identifiers,
+one `primary` binding per canonical MiniDeploy application, and one attached
+application per MiniBase database in v1. Attachments contain only database and
+consumer identity, binding name, and timestamps—never passwords, connection
+URIs, credential paths, or MiniDeploy environment values. A restricting foreign
+key prevents deleting database metadata while an attachment exists.
+
+Every integration endpoint requires a bearer token from:
+
+```text
+/srv/minibase/secrets/minideploy-integration-token
+```
+
+On normal startup MiniBase creates this token only if absent, using 32 bytes of
+cryptographic entropy, an owner-only directory, a mode-`0600` file, sync, and a
+no-replace atomic install. Existing tokens are validated and never overwritten
+or printed. MiniDeploy may read this one file for service authentication; it
+does not read individual database-password files.
+
+The loopback-only integration namespace is:
+
+```text
+GET    /api/v1/integrations/minideploy/databases
+POST   /api/v1/integrations/minideploy/databases
+POST   /api/v1/integrations/minideploy/attachments
+DELETE /api/v1/integrations/minideploy/attachments/{id}
+GET    /api/v1/integrations/minideploy/attachments/{id}/binding
+```
+
+Database creation delegates to the existing provisioning service. Listing and
+mutation responses contain safe resource metadata only. The binding endpoint is
+the sole credential-bearing operation; it requires a valid ready attachment,
+revalidates the database/role identifiers and credential file/directory modes,
+sets no-store response headers, and returns structured PostgreSQL connection
+material to the authenticated host-local MiniDeploy client. It is never exposed
+through Guest or ordinary browser APIs.
+
+Database detail in the Admin dashboard can show the attached canonical
+application, `MiniDeploy` service label, and `Primary` binding. Browser response
+adapters allowlist those fields. Guest remains unchanged and receives only
+database `id`, `displayName`, and `status`.
+
+An attachment relationship is independent from PostgreSQL lifecycle. Deleting
+the relationship never deletes the database, dedicated role, credential, or
+backups. Database deletion and credential rotation remain unimplemented.
+PostgreSQL remains private on the internal `reactorlab-data` network with no
+published 5432 port. MiniBase remains bound to `127.0.0.1:9100`; Phase 6 adds no
+Caddy/Cloudflare route, firewall rule, systemd service, or scheduler.
+
+For development or gated acceptance, the token path can be overridden without
+putting the token itself on the command line:
+
+```text
+-integration-token /absolute/path/to/token
+```

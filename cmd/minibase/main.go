@@ -14,6 +14,7 @@ import (
 	"github.com/conradevans/MiniBase/internal/api"
 	"github.com/conradevans/MiniBase/internal/backups"
 	"github.com/conradevans/MiniBase/internal/config"
+	"github.com/conradevans/MiniBase/internal/integrationauth"
 	"github.com/conradevans/MiniBase/internal/metadata"
 	"github.com/conradevans/MiniBase/internal/provisioning"
 	"github.com/conradevans/MiniBase/internal/secrets"
@@ -83,7 +84,14 @@ func run() int {
 		return 1
 	}
 
+	integrationToken, err := integrationauth.Ensure(cfg.IntegrationTokenPath)
+	if err != nil {
+		logger.Error("MiniDeploy integration token initialization failed")
+		return 1
+	}
+
 	handler := api.New(store, provisioningService, backupService, cfg.FrontendDir, logger)
+	handler.ConfigureMiniDeployIntegration(integrationToken, credentialStore)
 	server := api.HTTPServer(cfg.ListenAddress, handler)
 	listener, err := net.Listen("tcp", cfg.ListenAddress)
 	if err != nil {

@@ -54,11 +54,18 @@ type createDatabaseRequest struct {
 	DisplayName string `json:"displayName"`
 }
 
+type databaseDetailResponse struct {
+	metadata.Database
+	Attachments []metadata.Attachment `json:"attachments"`
+}
+
 func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Cache-Control", "no-store")
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 
 	switch {
+	case strings.HasPrefix(request.URL.Path, miniDeployIntegrationPrefix):
+		s.routeMiniDeployIntegration(response, request)
 	case request.URL.Path == "/health":
 		s.requireGet(response, request, s.handleHealth)
 	case request.URL.Path == "/api/v1/status":
@@ -183,7 +190,16 @@ func (s *Server) handleGetDatabase(response http.ResponseWriter, request *http.R
 		writeError(response, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
-	writeJSON(response, http.StatusOK, database)
+	attachments := make([]metadata.Attachment, 0)
+	if s.attachments != nil {
+		attachments, err = s.attachments.ListAttachmentsForDatabase(request.Context(), database.ID)
+		if err != nil {
+			s.logger.Error("database attachment metadata lookup failed")
+			writeError(response, http.StatusInternalServerError, "internal_error", "internal server error")
+			return
+		}
+	}
+	writeJSON(response, http.StatusOK, databaseDetailResponse{Database: database, Attachments: attachments})
 }
 
 func (s *Server) handleCreateDatabase(response http.ResponseWriter, request *http.Request) {

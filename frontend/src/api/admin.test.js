@@ -36,6 +36,7 @@ describe('admin API', () => {
       'status',
       'createdAt',
       'updatedAt',
+		'attachments',
     ])
   })
 

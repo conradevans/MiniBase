@@ -125,6 +125,9 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
   }
 
   const database = state.database
+  const attachment = database.attachments.find(
+    (item) => item.consumerType === 'minideploy' && item.bindingName === 'primary',
+  )
   return (
     <>
       <AppLink className="back-link" href="/admin/databases" navigate={navigate}>← All databases</AppLink>
@@ -166,10 +169,18 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
             Connection credentials are managed securely by MiniBase and are not
             exposed in browser responses.
           </p>
-          <p>
-            Automatic application attachment arrives with future MiniDeploy
-            integration.
-          </p>
+          {attachment ? (
+            <div className="attachment-detail">
+              <strong>Attached application</strong>
+              <dl className="definition-grid">
+                <div><dt>Application</dt><dd>{attachment.consumerRef}</dd></div>
+                <div><dt>Service</dt><dd>MiniDeploy</dd></div>
+                <div><dt>Binding</dt><dd>Primary</dd></div>
+              </dl>
+            </div>
+          ) : (
+            <p>No MiniDeploy application is attached to this database.</p>
+          )}
         </article>
       </section>
 

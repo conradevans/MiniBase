@@ -39,24 +39,31 @@ type backupManager interface {
 }
 
 type Server struct {
-	store       metadataReader
-	provisioner databaseProvisioner
-	backups     backupManager
-	logger      *slog.Logger
-	frontend    http.Handler
+	store            metadataReader
+	attachments      attachmentStore
+	credentials      credentialReader
+	integrationToken []byte
+	provisioner      databaseProvisioner
+	backups          backupManager
+	logger           *slog.Logger
+	frontend         http.Handler
 }
 
 func New(store metadataReader, provisioner databaseProvisioner, backupService backupManager, frontendDirectory string, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return &Server{
+	server := &Server{
 		store:       store,
 		provisioner: provisioner,
 		backups:     backupService,
 		frontend:    newFrontendHandler(frontendDirectory),
 		logger:      logger,
 	}
+	if attachments, ok := store.(attachmentStore); ok {
+		server.attachments = attachments
+	}
+	return server
 }
 
 func HTTPServer(address string, handler http.Handler) *http.Server {

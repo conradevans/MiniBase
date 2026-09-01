@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/conradevans/MiniBase/internal/ids"
 	"golang.org/x/sys/unix"
@@ -117,6 +118,43 @@ func (s *Store) Exists(databaseID string) (bool, error) {
 		return false, fmt.Errorf("database credential permissions are not owner-only")
 	}
 	return true, nil
+}
+
+func (s *Store) Read(databaseID string) (string, error) {
+	if !ids.ValidDatabaseID(databaseID) {
+		return "", fmt.Errorf("invalid database resource ID")
+	}
+	databaseDirectory := filepath.Join(s.root, databaseID)
+	passwordPath := filepath.Join(databaseDirectory, "password")
+	directoryInfo, err := os.Lstat(databaseDirectory)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrCredentialMissing
+		}
+		return "", fmt.Errorf("inspect database credential directory: %w", err)
+	}
+	if directoryInfo.Mode()&os.ModeSymlink != 0 || !directoryInfo.IsDir() || directoryInfo.Mode().Perm() != 0o700 {
+		return "", fmt.Errorf("database credential directory permissions are invalid")
+	}
+	info, err := os.Lstat(passwordPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrCredentialMissing
+		}
+		return "", fmt.Errorf("inspect database credential: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		return "", fmt.Errorf("database credential permissions must be 0600")
+	}
+	content, err := os.ReadFile(passwordPath)
+	if err != nil {
+		return "", fmt.Errorf("read database credential: %w", err)
+	}
+	password := strings.TrimSuffix(string(content), "\n")
+	if password == "" || strings.ContainsAny(password, "\r\n\x00") {
+		return "", fmt.Errorf("database credential is invalid")
+	}
+	return password, nil
 }
 
 func (s *Store) Delete(databaseID string) error {

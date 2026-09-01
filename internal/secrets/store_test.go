@@ -45,6 +45,22 @@ func TestCreateAndDeleteCredential(t *testing.T) {
 	if err != nil || !exists {
 		t.Fatalf("Exists() = %v, %v; want true, nil", exists, err)
 	}
+	readPassword, err := store.Read(testDatabaseID)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if readPassword != password {
+		t.Fatal("Read() did not return the stored credential")
+	}
+	if err := os.Chmod(passwordPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Read(testDatabaseID); err == nil || strings.Contains(err.Error(), password) {
+		t.Fatal("Read() accepted unsafe permissions or leaked the credential")
+	}
+	if err := os.Chmod(passwordPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Delete(testDatabaseID); err != nil {
 		t.Fatalf("Delete() error = %v", err)
 	}

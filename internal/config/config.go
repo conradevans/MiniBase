@@ -10,20 +10,22 @@ import (
 )
 
 const (
-	DefaultListenAddress      = "127.0.0.1:9100"
-	DefaultMetadataDBPath     = "/srv/minibase/data/minibase.db"
-	DefaultDatabaseSecretRoot = "/srv/minibase/secrets/databases"
-	DefaultBackupRoot         = "/srv/minibase/backups"
-	DefaultFrontendDir        = "/srv/minibase/frontend/dist"
+	DefaultListenAddress        = "127.0.0.1:9100"
+	DefaultMetadataDBPath       = "/srv/minibase/data/minibase.db"
+	DefaultIntegrationTokenPath = "/srv/minibase/secrets/minideploy-integration-token"
+	DefaultDatabaseSecretRoot   = "/srv/minibase/secrets/databases"
+	DefaultBackupRoot           = "/srv/minibase/backups"
+	DefaultFrontendDir          = "/srv/minibase/frontend/dist"
 )
 
 type Config struct {
-	ListenAddress      string
-	MetadataDBPath     string
-	DatabaseSecretRoot string
-	BackupRoot         string
-	FrontendDir        string
-	RunDueBackups      bool
+	ListenAddress        string
+	MetadataDBPath       string
+	DatabaseSecretRoot   string
+	BackupRoot           string
+	FrontendDir          string
+	IntegrationTokenPath string
+	RunDueBackups        bool
 }
 
 func Parse(args []string) (Config, error) {
@@ -35,6 +37,7 @@ func Parse(args []string) (Config, error) {
 	frontendDir := flags.String("frontend-dir", DefaultFrontendDir, "built dashboard directory")
 	runDueBackups := flags.Bool("run-due-backups", false, "run due automatic backups and retention, then exit")
 
+	integrationTokenPath := flags.String("integration-token", DefaultIntegrationTokenPath, "MiniDeploy integration token path")
 	if err := flags.Parse(args); err != nil {
 		return Config{}, err
 	}
@@ -61,14 +64,19 @@ func Parse(args []string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	absoluteIntegrationTokenPath, err := resolvePath("integration token", *integrationTokenPath)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		ListenAddress:      *listenAddress,
-		MetadataDBPath:     absoluteDBPath,
-		DatabaseSecretRoot: absoluteSecretRoot,
-		BackupRoot:         absoluteBackupRoot,
-		FrontendDir:        absoluteFrontendDir,
-		RunDueBackups:      *runDueBackups,
+		ListenAddress:        *listenAddress,
+		MetadataDBPath:       absoluteDBPath,
+		DatabaseSecretRoot:   absoluteSecretRoot,
+		BackupRoot:           absoluteBackupRoot,
+		FrontendDir:          absoluteFrontendDir,
+		IntegrationTokenPath: absoluteIntegrationTokenPath,
+		RunDueBackups:        *runDueBackups,
 	}, nil
 }
 

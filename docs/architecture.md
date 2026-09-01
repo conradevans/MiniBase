@@ -203,21 +203,81 @@ Archives live only under `/srv/minibase/backups` on the Dell. This protects
 against logical/application failure, not loss of the Dell SSD or other hardware.
 Off-Dell backup is future work.
 
+## MiniDeploy integration and attachment architecture
+
+Schema version 4 adds `attachments` as a first-class, non-secret relationship
+between a MiniBase database and an external consumer. IDs use 128 bits of
+cryptographic randomness encoded as `attachment_<32 lowercase hex>`. The table
+references `databases(id)` with `ON DELETE RESTRICT`, permits only the
+`minideploy` consumer type and `primary` binding in v1, uniquely constrains the
+consumer/binding tuple, and uniquely constrains `database_id`. This prevents one
+application primary binding from being duplicated and prevents sharing a
+database credential across applications. The Go store validates canonical
+lowercase application names and provides deterministic typed create/get/list/
+delete operations.
+
+MiniBase creates or loads the service authentication token at:
+
+```text
+/srv/minibase/secrets/minideploy-integration-token
+```
+
+Generation uses at least 32 random bytes and a no-replace atomic installation;
+the token file must be a regular mode-`0600` file. Requests use a standard
+Bearer header and constant-time comparison. Missing, malformed, or incorrect
+credentials receive the same safe unauthorized response, and supplied tokens
+are not logged.
+
+The integration API is separate from browser APIs:
+
+```text
+/api/v1/integrations/minideploy/*
+```
+
+It remains on the loopback-only MiniBase listener. Database creation delegates
+to the existing provisioning service rather than duplicating PostgreSQL logic.
+Only ready databases can be attached. The binding endpoint revalidates ready
+metadata, generated internal database/role names, the credential directory, and
+the mode-`0600` password file before returning this structured DTO:
+
+```text
+databaseId
+engine = postgresql
+host = minibase-postgres
+port = 5432
+database
+username
+password
+dockerNetwork = reactorlab-data
+```
+
+Binding responses set `Cache-Control: no-store` and `Pragma: no-cache`. Password
+material is read only for an authenticated binding request, is not stored in
+SQLite or attachment metadata, and is not exposed by ordinary Admin or Guest
+APIs. Database detail embeds safe attachment metadata so the local Admin
+dashboard can show consumer application, service, and binding; Guest DTOs stay
+unchanged.
+
+Deleting an attachment removes only the relationship. It does not call
+PostgreSQL, remove the application role or credential, delete backups, or alter
+the database. Because the database remains a MiniBase resource independent of
+deployment releases, MiniDeploy can replace or roll back application code while
+retaining the same database.
+
+MiniBase remains `127.0.0.1:9100` only. The integration does not add a public
+route, expose PostgreSQL, install systemd/cron/timers, or change the existing
+internal Docker network.
+
 ## Future architecture
 
-The following capabilities are planned and are not implemented in Phase 5:
+The following remain planned rather than implemented in Phase 6:
 
-- MiniDeploy will later request project database attachments privately and
-  inject the resulting `DATABASE_URL` into application runtime environments.
 - Persistent scheduler activation and off-Dell backup remain future
   operational work.
 - Database deletion is intentionally absent until explicit backup and deletion
   safety are designed. Deleting an application will not implicitly delete its
   database.
-- A project may have multiple databases, with one database offered as the
-  default workflow.
-- Standalone databases may be created first and attached to projects later.
-- Friendly display names will map to validated, collision-safe internal IDs,
-  PostgreSQL database names, and role names.
+- Multiple active named database bindings are deferred; Phase 6 exposes one
+  primary binding.
 - Any public management surface requires Cloudflare Access and an explicit
   backend authorization design in a later phase.
