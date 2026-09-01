@@ -1,0 +1,33 @@
+# MiniBase secrets
+secrets/*
+!secrets/.gitkeep
+
+# SQLite control-plane data
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite-*
+data/*.sqlite3
+data/*.sqlite3-*
+
+# PostgreSQL backups
+backups/*
+!backups/.gitkeep
+*.backup
+*.dump
+*.sql
+*.sql.gz
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+.cache/
+
+# Editor / OS
+.DS_Store
+.vscode/

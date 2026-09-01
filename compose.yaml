@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: minibase-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: minibase_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-admin-password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+
+    command:
+      - postgres
+      - -c
+      - password_encryption=scram-sha-256
+
+    volumes:
+      - minibase-postgres-data:/var/lib/postgresql/data
+      - ./secrets/postgres-admin-password:/run/secrets/postgres-admin-password:ro
+
+    networks:
+      - reactorlab-data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U minibase_admin -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  minibase-postgres-data:
+    external: true
+
+networks:
+  reactorlab-data:
+    external: true
