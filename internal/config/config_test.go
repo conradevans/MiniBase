@@ -16,11 +16,15 @@ func TestParseDefaults(t *testing.T) {
 	if cfg.MetadataDBPath != DefaultMetadataDBPath {
 		t.Fatalf("MetadataDBPath = %q, want %q", cfg.MetadataDBPath, DefaultMetadataDBPath)
 	}
+	if cfg.DatabaseSecretRoot != DefaultDatabaseSecretRoot {
+		t.Fatalf("DatabaseSecretRoot = %q, want %q", cfg.DatabaseSecretRoot, DefaultDatabaseSecretRoot)
+	}
 }
 
 func TestParseOverrides(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "metadata.db")
-	cfg, err := Parse([]string{"-listen", "127.0.0.1:0", "-metadata-db", dbPath})
+	secretRoot := filepath.Join(t.TempDir(), "database-secrets")
+	cfg, err := Parse([]string{"-listen", "127.0.0.1:0", "-metadata-db", dbPath, "-database-secrets", secretRoot})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -29,6 +33,9 @@ func TestParseOverrides(t *testing.T) {
 	}
 	if cfg.MetadataDBPath != dbPath {
 		t.Fatalf("MetadataDBPath = %q, want %q", cfg.MetadataDBPath, dbPath)
+	}
+	if cfg.DatabaseSecretRoot != secretRoot {
+		t.Fatalf("DatabaseSecretRoot = %q, want %q", cfg.DatabaseSecretRoot, secretRoot)
 	}
 }
 

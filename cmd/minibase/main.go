@@ -14,6 +14,8 @@ import (
 	"github.com/conradevans/MiniBase/internal/api"
 	"github.com/conradevans/MiniBase/internal/config"
 	"github.com/conradevans/MiniBase/internal/metadata"
+	"github.com/conradevans/MiniBase/internal/provisioning"
+	"github.com/conradevans/MiniBase/internal/secrets"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -42,13 +44,24 @@ func run() int {
 		}
 	}()
 
+	credentialStore, err := secrets.New(cfg.DatabaseSecretRoot)
+	if err != nil {
+		logger.Error("database credential store initialization failed")
+		return 1
+	}
+	provisioningService := provisioning.NewService(store, credentialStore, provisioning.NewDockerPostgres())
+	if err := provisioningService.Reconcile(context.Background()); err != nil {
+		logger.Error("provisioning reconciliation failed")
+		return 1
+	}
+
 	schemaVersion, err := store.SchemaVersion(context.Background())
 	if err != nil {
 		logger.Error("schema version check failed")
 		return 1
 	}
 
-	handler := api.New(store, logger)
+	handler := api.New(store, provisioningService, logger)
 	server := api.HTTPServer(cfg.ListenAddress, handler)
 	listener, err := net.Listen("tcp", cfg.ListenAddress)
 	if err != nil {

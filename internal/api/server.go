@@ -25,16 +25,21 @@ type metadataReader interface {
 	GetDatabase(context.Context, string) (metadata.Database, error)
 }
 
-type Server struct {
-	store  metadataReader
-	logger *slog.Logger
+type databaseProvisioner interface {
+	ProvisionDatabase(context.Context, string) (metadata.Database, error)
 }
 
-func New(store metadataReader, logger *slog.Logger) *Server {
+type Server struct {
+	store       metadataReader
+	provisioner databaseProvisioner
+	logger      *slog.Logger
+}
+
+func New(store metadataReader, provisioner databaseProvisioner, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return &Server{store: store, logger: logger}
+	return &Server{store: store, provisioner: provisioner, logger: logger}
 }
 
 func HTTPServer(address string, handler http.Handler) *http.Server {

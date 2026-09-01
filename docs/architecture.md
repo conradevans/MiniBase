@@ -15,10 +15,10 @@ container must not remove the volume.
 
 ## Go control plane and SQLite metadata
 
-Phase 2 introduces a Go control-plane process using the standard library HTTP
+The Go control-plane process uses the standard library HTTP
 server. It listens on `127.0.0.1:9100` by default and accepts only loopback
 addresses. There is no Caddy route, Cloudflare route, public listener, or systemd
-service in Phase 2.
+service in Phase 3.
 
 Control-plane metadata is stored in SQLite at
 `/srv/minibase/data/minibase.db` by default. SQLite is not an application
@@ -29,28 +29,91 @@ SQLite uses ordered, transactional schema migrations recorded in a
 `schema_migrations` table. Phase 2 schema version 1 contains only the `databases`
 metadata table. Foreign keys are enabled, WAL journal mode is required, writes
 use a busy timeout, and the database and its parent directory are
-owner-restricted.
+owner-restricted. Phase 3 schema version 2 adds a nullable generated role name;
+nullable storage preserves any metadata-only rows created under version 1.
 
 Database records use immutable cryptographically random resource IDs and
 PostgreSQL-safe internal names. Friendly display names remain independent from
 those internal identifiers.
 
-The Phase 2 HTTP API exposes health, status, and read-only database metadata.
-Metadata mutation is available only through the internal store for tests and
-future provisioning workflows; there are no public create, update, or delete
-endpoints.
+The HTTP API exposes health, status, safe database metadata, and one mutation:
+
+```text
+POST /api/v1/databases
+```
+
+The POST body accepts only `displayName`. Responses never include PostgreSQL role
+names, passwords, credential paths, administrator information, or connection
+strings. No update or delete endpoint is exposed.
+
+## PostgreSQL provisioning
+
+Phase 3 separates provisioning into four responsibilities:
+
+- the HTTP layer validates a bounded JSON request and serializes safe metadata;
+- the service coordinates lifecycle, verification, compensation, and startup
+  reconciliation;
+- the SQLite store persists non-secret control-plane metadata;
+- the PostgreSQL and filesystem adapters create database resources and
+  credentials.
+
+Each provisioned database receives generated identifiers of the form
+`db_<32 lowercase hex>`, `mb_db_<32 lowercase hex>`, and
+`mb_role_<32 lowercase hex>`. Display names never become SQL identifiers. The
+dedicated role has LOGIN but is explicitly denied superuser, database creation,
+role creation, replication, and row-level-security bypass capabilities.
+
+The dedicated role owns its UTF-8 database. MiniBase revokes database privileges
+from PUBLIC, grants the owner only the database connection and temporary access
+it needs, revokes PUBLIC access to create in the database's `public` schema, and
+allows the owner to use and create objects in that schema. Unrelated application
+roles therefore cannot rely on default PUBLIC access to connect or create
+objects.
+
+PostgreSQL has no published host port. Administrative SQL is sent over stdin to
+`psql` through a direct `docker exec -i minibase-postgres ...` process invocation;
+no shell is involved and the PostgreSQL administrator password is not read by
+the Go process. Host access to Docker is an administrative trust boundary.
+
+## Credential lifecycle
+
+Application passwords contain 32 bytes of cryptographic entropy encoded as 64
+lowercase hexadecimal characters. They are never stored in SQLite. The default
+credential path is:
+
+```text
+/srv/minibase/secrets/databases/<database_id>/password
+```
+
+The root and resource directories are mode 0700 and the password file is mode
+0600. Creation uses an owner-restricted temporary file, file and directory sync,
+and a no-replace atomic rename. Existing credentials are never overwritten.
+
+The creation workflow persists `status=provisioning`, creates the credential,
+role, database, and restricted privileges, verifies the resulting PostgreSQL
+state, and only then persists `status=ready`. Failures trigger compensation only
+for exact generated identifiers belonging to that workflow. If the database,
+role, credential, and metadata can all be removed safely, no failed record is
+left. If cleanup is incomplete, diagnostic metadata remains with
+`status=error`.
+
+Startup reconciliation is deliberately non-destructive. For every record still
+in `provisioning`, it checks the generated role, database, ownership and
+privileges, and credential-file presence. A complete match becomes `ready`; an
+absent, partial, or inconsistent state becomes `error`. Reconciliation does not
+recreate, repair, or delete PostgreSQL resources.
 
 ## Future architecture
 
-The following capabilities are planned and are not implemented in Phase 2:
+The following capabilities are planned and are not implemented in Phase 3:
 
-- Phase 3 will provision PostgreSQL application databases and isolated roles.
 - MiniDeploy will later request project database attachments privately and
   inject the resulting `DATABASE_URL` into application runtime environments.
 - Backups will remain on the Dell and will be managed independently from
   application containers.
-- Deleting an application will not implicitly delete its database. Database
-  deletion will require a separate, explicit operation.
+- Database deletion is intentionally absent until explicit backup and deletion
+  safety are designed. Deleting an application will not implicitly delete its
+  database.
 - A project may have multiple databases, with one database offered as the
   default workflow.
 - Standalone databases may be created first and attached to projects later.

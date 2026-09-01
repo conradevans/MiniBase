@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -54,8 +55,8 @@ func TestFreshInitializationAndReopenAreIdempotent(t *testing.T) {
 	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations").Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 1 {
-		t.Fatalf("migration count = %d, want 1", migrationCount)
+	if migrationCount != CurrentSchemaVersion {
+		t.Fatalf("migration count = %d, want %d", migrationCount, CurrentSchemaVersion)
 	}
 
 	var foreignKeys int
@@ -128,8 +129,8 @@ func TestFreshInitializationAndReopenAreIdempotent(t *testing.T) {
 	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations").Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations after reopen: %v", err)
 	}
-	if migrationCount != 1 {
-		t.Fatalf("migration count after reopen = %d, want 1", migrationCount)
+	if migrationCount != CurrentSchemaVersion {
+		t.Fatalf("migration count after reopen = %d, want %d", migrationCount, CurrentSchemaVersion)
 	}
 }
 
@@ -268,6 +269,70 @@ func TestMissingRecordBehavior(t *testing.T) {
 	}
 }
 
+func TestMigrationFromV1PreservesExistingMetadata(t *testing.T) {
+	ctx := context.Background()
+	databasePath := filepath.Join(t.TempDir(), "minibase.db")
+	if _, err := prepareDatabasePath(databasePath); err != nil {
+		t.Fatalf("prepareDatabasePath() error = %v", err)
+	}
+
+	db, err := sql.Open("sqlite", sqliteDSN(databasePath))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
+		version INTEGER PRIMARY KEY,
+		applied_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create migration table: %v", err)
+	}
+	for _, statement := range migrations[0].statements {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("apply v1 statement: %v", err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("record v1 migration: %v", err)
+	}
+	const (
+		databaseID   = "database_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		internalName = "mb_db_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.ExecContext(
+		ctx,
+		"INSERT INTO databases (id, display_name, internal_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+		databaseID, "Existing Metadata", internalName, StatusMetadataOnly, now, now,
+	); err != nil {
+		t.Fatalf("insert v1 metadata: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v1 database: %v", err)
+	}
+
+	store, err := Open(ctx, databasePath)
+	if err != nil {
+		t.Fatalf("Open() migrated database error = %v", err)
+	}
+	defer store.Close()
+
+	version, err := store.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("SchemaVersion() error = %v", err)
+	}
+	if version != 2 {
+		t.Fatalf("schema version = %d, want 2", version)
+	}
+	database, err := store.GetDatabase(ctx, databaseID)
+	if err != nil {
+		t.Fatalf("GetDatabase() error = %v", err)
+	}
+	if database.DisplayName != "Existing Metadata" || database.InternalName != internalName || database.RoleName != "" {
+		t.Fatalf("migrated database = %#v", database)
+	}
+}
+
 func TestInitialSchemaContainsNoCredentialColumns(t *testing.T) {
 	ctx := context.Background()
 	store, _ := openTestStore(t)
@@ -297,7 +362,7 @@ func TestInitialSchemaContainsNoCredentialColumns(t *testing.T) {
 		t.Fatalf("iterate table info: %v", err)
 	}
 
-	want := []string{"id", "display_name", "internal_name", "status", "created_at", "updated_at"}
+	want := []string{"id", "display_name", "internal_name", "status", "created_at", "updated_at", "role_name"}
 	if strings.Join(columns, ",") != strings.Join(want, ",") {
 		t.Fatalf("columns = %v, want %v", columns, want)
 	}

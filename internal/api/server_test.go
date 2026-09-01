@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,7 +24,7 @@ func testServer(t *testing.T) (*Server, *metadata.Store) {
 	t.Cleanup(func() {
 		_ = store.Close()
 	})
-	return New(store, slog.New(slog.NewTextHandler(io.Discard, nil))), store
+	return New(store, nil, slog.New(slog.NewTextHandler(io.Discard, nil))), store
 }
 
 func request(t *testing.T, server http.Handler, method, path string) *httptest.ResponseRecorder {
@@ -139,11 +140,11 @@ func TestMissingDatabaseAndUnknownRouteReturnJSON404(t *testing.T) {
 
 func TestMutationMethodsAreNotImplemented(t *testing.T) {
 	server, _ := testServer(t)
-	response := request(t, server, http.MethodPost, "/api/v1/databases")
+	response := request(t, server, http.MethodPut, "/api/v1/databases")
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if response.Header().Get("Allow") != http.MethodGet {
+	if response.Header().Get("Allow") != "GET, POST" {
 		t.Fatalf("Allow = %q", response.Header().Get("Allow"))
 	}
 }
@@ -197,4 +198,106 @@ func assertExactKeys(t *testing.T, fields map[string]json.RawMessage, expected .
 	if len(fields) != 0 {
 		t.Fatalf("response contains unexpected fields: %v", fields)
 	}
+}
+
+func TestCreateDatabase(t *testing.T) {
+	server, _ := testServer(t)
+	provisioner := &fakeProvisioner{database: metadata.Database{
+		ID:           "database_0123456789abcdef0123456789abcdef",
+		DisplayName:  "MyScheduler Production",
+		InternalName: "mb_db_0123456789abcdef0123456789abcdef",
+		RoleName:     "mb_role_0123456789abcdef0123456789abcdef",
+		Status:       metadata.StatusReady,
+	}}
+	server.provisioner = provisioner
+
+	response := jsonRequest(t, server, `{"displayName":"  MyScheduler Production  "}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if provisioner.displayName != "  MyScheduler Production  " {
+		t.Fatalf("provisioner display name = %q", provisioner.displayName)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
+		t.Fatalf("decode response fields: %v", err)
+	}
+	assertExactKeys(t, fields, "id", "displayName", "internalName", "status", "createdAt", "updatedAt")
+	assertSafeResponse(t, response.Body.String())
+	if strings.Contains(response.Body.String(), "roleName") {
+		t.Fatal("response exposed internal role name")
+	}
+}
+
+func TestCreateDatabaseRejectsInvalidRequests(t *testing.T) {
+	server, _ := testServer(t)
+	server.provisioner = &fakeProvisioner{}
+
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+		wantStatus  int
+	}{
+		{name: "malformed JSON", contentType: "application/json", body: `{"displayName":`, wantStatus: http.StatusBadRequest},
+		{name: "unknown field", contentType: "application/json", body: `{"displayName":"Example","status":"ready"}`, wantStatus: http.StatusBadRequest},
+		{name: "multiple values", contentType: "application/json", body: `{"displayName":"Example"} {}`, wantStatus: http.StatusBadRequest},
+		{name: "missing display name", contentType: "application/json", body: `{}`, wantStatus: http.StatusBadRequest},
+		{name: "blank display name", contentType: "application/json", body: `{"displayName":"   "}`, wantStatus: http.StatusBadRequest},
+		{name: "oversized", contentType: "application/json", body: `{"displayName":"` + strings.Repeat("a", maxRequestBodyBytes) + `"}`, wantStatus: http.StatusRequestEntityTooLarge},
+		{name: "wrong content type", contentType: "text/plain", body: `{"displayName":"Example"}`, wantStatus: http.StatusUnsupportedMediaType},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/databases", strings.NewReader(test.body))
+			request.Header.Set("Content-Type", test.contentType)
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, request)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, test.wantStatus, response.Body.String())
+			}
+			assertSafeResponse(t, response.Body.String())
+		})
+	}
+}
+
+func TestCreateDatabaseProvisioningFailureIsSafe(t *testing.T) {
+	server, _ := testServer(t)
+	server.provisioner = &fakeProvisioner{err: errors.New("internal secret-bearing failure")}
+
+	response := jsonRequest(t, server, `{"displayName":"Example"}`)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "secret-bearing") {
+		t.Fatalf("response leaked provisioning error: %s", response.Body.String())
+	}
+	assertSafeResponse(t, response.Body.String())
+}
+
+func jsonRequest(t *testing.T, server http.Handler, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/databases", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json; charset=utf-8")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	return response
+}
+
+type fakeProvisioner struct {
+	database    metadata.Database
+	err         error
+	displayName string
+}
+
+func (provisioner *fakeProvisioner) ProvisionDatabase(_ context.Context, displayName string) (metadata.Database, error) {
+	provisioner.displayName = displayName
+	if provisioner.err != nil {
+		return metadata.Database{}, provisioner.err
+	}
+	if _, err := metadata.NormalizeDisplayName(displayName); err != nil {
+		return metadata.Database{}, err
+	}
+	return provisioner.database, nil
 }

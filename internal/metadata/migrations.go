@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 type migration struct {
 	version    int
@@ -43,6 +43,24 @@ var migrations = []migration{
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
 			)`,
+		},
+	},
+	{
+		version: 2,
+		statements: []string{
+			`ALTER TABLE databases ADD COLUMN role_name TEXT
+				CHECK (
+					role_name IS NULL
+					OR (
+						length(role_name) = 40
+						AND substr(role_name, 1, 8) = 'mb_role_'
+						AND role_name = lower(role_name)
+						AND role_name NOT GLOB '*[^a-z0-9_]*'
+					)
+				)`,
+			`CREATE UNIQUE INDEX databases_role_name_unique
+				ON databases(role_name)
+				WHERE role_name IS NOT NULL`,
 		},
 	},
 }
