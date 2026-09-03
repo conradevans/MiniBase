@@ -1,5 +1,8 @@
 const safeMessages = {
   invalid_display_name: 'Enter a database name between 1 and 200 characters.',
+  database_attached: 'Detach this database from MiniDeploy before deleting it.',
+  database_unavailable: 'This database is not currently available for deletion.',
+  deletion_failed: 'MiniBase could not delete the database.',
   provisioning_failed: 'MiniBase could not provision the database.',
   request_too_large: 'The request was too large.',
   service_unavailable: 'MiniBase is temporarily unavailable.',

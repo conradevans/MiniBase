@@ -108,6 +108,12 @@ export function createAdminApi(requester = requestJSON) {
       )
     },
 
+    async deleteDatabase(id) {
+      return requester(`/api/v1/databases/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+    },
+
     async getBackups() {
       const result = await requester('/api/v1/backups')
       if (!Array.isArray(result)) {

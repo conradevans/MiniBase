@@ -1201,3 +1201,103 @@ code {
     padding: 12px;
   }
 }
+
+
+/* MiniBase database deletion UI */
+
+.database-settings {
+  padding-top: 30px;
+}
+
+.danger-zone {
+  border-color: #57272d;
+  background: #141013;
+}
+
+.danger-zone-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.danger-zone > p {
+  max-width: 720px;
+  margin: 14px 0 0;
+  color: #858d98;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.settings-notice {
+  justify-content: flex-start;
+  margin-top: 18px;
+}
+
+.danger-zone-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #332126;
+}
+
+.danger-zone-actions strong {
+  display: block;
+  font-size: 12px;
+}
+
+.danger-zone-actions p {
+  margin: 5px 0 0;
+  color: #717986;
+  font-size: 11px;
+}
+
+.delete-dialog {
+  width: min(580px, 100%);
+}
+
+.destructive-warning {
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #57272d;
+  border-radius: 10px;
+  background: #231316;
+}
+
+.destructive-warning > strong {
+  color: #fda4af;
+  font-size: 13px;
+}
+
+.destructive-warning p {
+  margin: 8px 0 0;
+  color: #a78f94;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.danger-list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: #bd9ba1;
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.delete-form .notice {
+  margin-top: 17px;
+}
+
+@media (max-width: 700px) {
+  .danger-zone-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .danger-zone-actions .button {
+    width: 100%;
+  }
+}

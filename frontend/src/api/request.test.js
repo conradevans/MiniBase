@@ -41,6 +41,55 @@ describe('requestJSON', () => {
     )
   })
 
+  test('maps database deletion failures to safe messages', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { code: 'database_attached' } }),
+          { status: 409 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { code: 'database_unavailable' } }),
+          { status: 409 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { code: 'deletion_failed' } }),
+          { status: 500 },
+        ),
+      )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      requestJSON('/api/v1/databases/database_test', {
+        method: 'DELETE',
+      }),
+    ).rejects.toThrow(
+      'Detach this database from MiniDeploy before deleting it.',
+    )
+
+    await expect(
+      requestJSON('/api/v1/databases/database_test', {
+        method: 'DELETE',
+      }),
+    ).rejects.toThrow(
+      'This database is not currently available for deletion.',
+    )
+
+    await expect(
+      requestJSON('/api/v1/databases/database_test', {
+        method: 'DELETE',
+      }),
+    ).rejects.toThrow(
+      'MiniBase could not delete the database.',
+    )
+  })
+
   test('handles network and malformed response failures safely', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('secret detail')))
     await expect(requestJSON('/health')).rejects.toEqual(

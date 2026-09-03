@@ -75,6 +75,18 @@ describe('admin API', () => {
   })
 
 
+  test('uses DELETE for explicit database deletion', async () => {
+    const requester = vi.fn().mockResolvedValue(null)
+    const api = createAdminApi(requester)
+
+    await expect(api.deleteDatabase(database.id)).resolves.toBeNull()
+
+    expect(requester).toHaveBeenCalledWith(
+      `/api/v1/databases/${database.id}`,
+      { method: 'DELETE' },
+    )
+  })
+
   test('allowlists backup fields and uses explicit backup API requests', async () => {
     expect(Object.keys(toAdminBackup(backup))).toEqual([
       'id',

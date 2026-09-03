@@ -41,7 +41,7 @@ describe('MiniDeploy attachment visibility', () => {
     )
 
     expect(await screen.findByText('Attached application')).toBeTruthy()
-    expect(screen.getByText('myscheduler')).toBeTruthy()
+    expect(screen.getAllByText('myscheduler').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('MiniDeploy')).toBeTruthy()
     expect(screen.getByText('Primary')).toBeTruthy()
     expect(view.container.textContent).not.toContain('mock-secret-must-not-render')

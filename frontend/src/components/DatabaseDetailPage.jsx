@@ -5,6 +5,7 @@ import { safeErrorMessage } from '../api/request'
 import { formatTimestamp } from '../utils/format'
 import AppLink from './AppLink'
 import BackupList from './BackupList'
+import DeleteDatabaseDialog from './DeleteDatabaseDialog'
 import RestoreBackupDialog from './RestoreBackupDialog'
 import StatusBadge from './StatusBadge'
 
@@ -17,6 +18,7 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
   const [backupError, setBackupError] = useState('')
   const [backupNotice, setBackupNotice] = useState('')
   const [selectedBackup, setSelectedBackup] = useState(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const createBackupButtonRef = useRef(null)
 
   const loadBackups = useCallback(async () => {
@@ -110,6 +112,12 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
     await loadBackups()
   }
 
+  async function deleteDatabase() {
+    await api.deleteDatabase(databaseID)
+    setDeleteDialogOpen(false)
+    navigate('/admin/databases')
+  }
+
   if (state.loading) {
     return <div className="empty-state">Loading database…</div>
   }
@@ -125,6 +133,11 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
   }
 
   const database = state.database
+  const deletionAttachment = database.attachments[0] || null
+  const deletionAllowed =
+    !deletionAttachment &&
+    (database.status === 'ready' || database.status === 'error')
+
   const attachment = database.attachments.find(
     (item) => item.consumerType === 'minideploy' && item.bindingName === 'primary',
   )
@@ -145,7 +158,7 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
         <span>Connection</span>
         <a href="#backups">Backups</a>
         <span className="unavailable">Activity · Later</span>
-        <span className="unavailable">Settings · Later</span>
+        <a href="#settings">Settings</a>
       </nav>
 
       <section className="detail-grid">
@@ -219,8 +232,72 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
       </section>
 
       <section className="future-grid">
-        <article><span>ACTIVITY</span><strong>Coming later</strong><p>Provisioning activity history is not available yet.</p></article>
-        <article><span>SETTINGS</span><strong>Coming later</strong><p>Deletion is intentionally unavailable until dependency and backup safety exists.</p></article>
+        <article>
+          <span>ACTIVITY</span>
+          <strong>Coming later</strong>
+          <p>Provisioning activity history is not available yet.</p>
+        </article>
+      </section>
+
+      <section
+        className="content-section database-settings"
+        id="settings"
+      >
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">DATABASE SETTINGS</p>
+            <h2>Settings</h2>
+          </div>
+        </div>
+
+        <article className="section-card danger-zone">
+          <div className="danger-zone-heading">
+            <div>
+              <p className="eyebrow">DANGER ZONE</p>
+              <h2>Delete database</h2>
+            </div>
+          </div>
+
+          <p>
+            Permanently remove this PostgreSQL database, its isolated role
+            and credential, all MiniBase backups for it, and its MiniBase
+            metadata.
+          </p>
+
+          {deletionAttachment ? (
+            <div className="notice error settings-notice">
+              <span>
+                This database is attached to{' '}
+                <strong>{deletionAttachment.consumerRef}</strong>. Detach it
+                from MiniDeploy before deleting it.
+              </span>
+            </div>
+          ) : null}
+
+          {!deletionAttachment && !deletionAllowed ? (
+            <div className="notice error settings-notice">
+              <span>
+                This database is not currently in a state that can be deleted.
+              </span>
+            </div>
+          ) : null}
+
+          <div className="danger-zone-actions">
+            <div>
+              <strong>Permanent deletion</strong>
+              <p>This action cannot be undone.</p>
+            </div>
+
+            <button
+              className="button danger"
+              type="button"
+              disabled={!deletionAllowed}
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              Delete database
+            </button>
+          </div>
+        </article>
       </section>
 
       {selectedBackup ? (
@@ -229,6 +306,14 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
           databases={databases}
           onClose={() => setSelectedBackup(null)}
           onRestored={restoreBackup}
+        />
+      ) : null}
+
+      {deleteDialogOpen ? (
+        <DeleteDatabaseDialog
+          database={database}
+          onClose={() => setDeleteDialogOpen(false)}
+          onDelete={deleteDatabase}
         />
       ) : null}
     </>

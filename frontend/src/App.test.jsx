@@ -46,6 +46,7 @@ function makeAdminApi(overrides = {}) {
     getDatabases: vi.fn().mockResolvedValue([]),
     getDatabase: vi.fn().mockResolvedValue(baseDatabase),
     createDatabase: vi.fn().mockResolvedValue(baseDatabase),
+    deleteDatabase: vi.fn().mockResolvedValue(null),
     getBackups: vi.fn().mockResolvedValue([]),
     getDatabaseBackups: vi.fn().mockResolvedValue([]),
     createBackup: vi.fn().mockResolvedValue({
@@ -282,6 +283,189 @@ describe('MiniBase dashboard', () => {
     expect(view.container.textContent).not.toContain('must-not-render')
   })
 
+
+  test('requires the exact database name before deletion is enabled', async () => {
+    const deleteDatabase = vi.fn().mockResolvedValue(null)
+    const adminApi = makeAdminApi({
+      getDatabase: vi.fn().mockResolvedValue({
+        ...baseDatabase,
+        attachments: [],
+      }),
+      deleteDatabase,
+    })
+
+    renderApp(`/admin/databases/${baseDatabase.id}`, { adminApi })
+
+    await screen.findByRole('heading', {
+      name: 'Scheduler Production',
+    })
+
+    const openButton = screen.getByRole('button', {
+      name: 'Delete database',
+    })
+
+    expect(openButton.disabled).toBe(false)
+    fireEvent.click(openButton)
+
+    const dialog = screen.getByRole('dialog')
+    const confirmation = within(dialog).getByLabelText(
+      `Type ${baseDatabase.displayName} to confirm`,
+    )
+    const submit = within(dialog).getByRole('button', {
+      name: 'Delete database',
+    })
+
+    expect(submit.disabled).toBe(true)
+
+    fireEvent.change(confirmation, {
+      target: { value: 'Scheduler' },
+    })
+    expect(submit.disabled).toBe(true)
+    expect(deleteDatabase).not.toHaveBeenCalled()
+
+    fireEvent.change(confirmation, {
+      target: { value: baseDatabase.displayName },
+    })
+    expect(submit.disabled).toBe(false)
+  })
+
+  test('deletes a standalone database and returns to the database list', async () => {
+    const deleteDatabase = vi.fn().mockResolvedValue(null)
+    const adminApi = makeAdminApi({
+      getDatabase: vi.fn().mockResolvedValue({
+        ...baseDatabase,
+        attachments: [],
+      }),
+      getDatabases: vi.fn().mockResolvedValue([]),
+      deleteDatabase,
+    })
+
+    renderApp(`/admin/databases/${baseDatabase.id}`, { adminApi })
+
+    await screen.findByRole('heading', {
+      name: 'Scheduler Production',
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete database' }),
+    )
+
+    const dialog = screen.getByRole('dialog')
+
+    fireEvent.change(
+      within(dialog).getByLabelText(
+        `Type ${baseDatabase.displayName} to confirm`,
+      ),
+      { target: { value: baseDatabase.displayName } },
+    )
+
+    fireEvent.click(
+      within(dialog).getByRole('button', {
+        name: 'Delete database',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(deleteDatabase).toHaveBeenCalledTimes(1)
+      expect(deleteDatabase).toHaveBeenCalledWith(baseDatabase.id)
+    })
+
+    expect(
+      await screen.findByRole('heading', { name: 'Databases' }),
+    ).toBeTruthy()
+    expect(await screen.findByText('No databases yet.')).toBeTruthy()
+  })
+
+  test('disables deletion while a database is attached to MiniDeploy', async () => {
+    const attachedDatabase = {
+      ...baseDatabase,
+      attachments: [
+        {
+          id: 'attachment_0123456789abcdef0123456789abcdef',
+          databaseId: baseDatabase.id,
+          consumerType: 'minideploy',
+          consumerRef: 'myscheduler',
+          bindingName: 'primary',
+          createdAt: '2026-09-01T12:00:00Z',
+          updatedAt: '2026-09-01T12:00:00Z',
+        },
+      ],
+    }
+
+    const adminApi = makeAdminApi({
+      getDatabase: vi.fn().mockResolvedValue(attachedDatabase),
+    })
+
+    const view = renderApp(
+      `/admin/databases/${baseDatabase.id}`,
+      { adminApi },
+    )
+
+    await screen.findByRole('heading', {
+      name: 'Scheduler Production',
+    })
+
+    const deleteButton = screen.getByRole('button', {
+      name: 'Delete database',
+    })
+
+    expect(deleteButton.disabled).toBe(true)
+    expect(view.container.textContent).toContain(
+      'Detach it from MiniDeploy before deleting it.',
+    )
+    expect(view.container.textContent).toContain('myscheduler')
+  })
+
+  test('shows a safe refusal if an attachment appears before deletion completes', async () => {
+    const deleteDatabase = vi.fn().mockRejectedValue(
+      new MiniBaseApiError(
+        'Detach this database from MiniDeploy before deleting it.',
+        409,
+      ),
+    )
+
+    const adminApi = makeAdminApi({
+      getDatabase: vi.fn().mockResolvedValue({
+        ...baseDatabase,
+        attachments: [],
+      }),
+      deleteDatabase,
+    })
+
+    renderApp(`/admin/databases/${baseDatabase.id}`, { adminApi })
+
+    await screen.findByRole('heading', {
+      name: 'Scheduler Production',
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete database' }),
+    )
+
+    const dialog = screen.getByRole('dialog')
+
+    fireEvent.change(
+      within(dialog).getByLabelText(
+        `Type ${baseDatabase.displayName} to confirm`,
+      ),
+      { target: { value: baseDatabase.displayName } },
+    )
+
+    fireEvent.click(
+      within(dialog).getByRole('button', {
+        name: 'Delete database',
+      }),
+    )
+
+    expect(
+      await within(dialog).findByText(
+        'Detach this database from MiniDeploy before deleting it.',
+      ),
+    ).toBeTruthy()
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(deleteDatabase).toHaveBeenCalledTimes(1)
+  })
 
   test('renders real backup empty and populated states without internal fields', async () => {
     const emptyView = renderApp('/admin/backups')
