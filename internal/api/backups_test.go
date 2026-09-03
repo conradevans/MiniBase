@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	backupservice "github.com/conradevans/MiniBase/internal/backups"
 	"github.com/conradevans/MiniBase/internal/metadata"
 )
 
@@ -167,6 +168,56 @@ func TestBackupMissingAndOperationalErrorsAreSafe(t *testing.T) {
 	assertSafeResponse(t, response.Body.String())
 }
 
+func TestDeleteDatabaseResponseContract(t *testing.T) {
+	databaseID := "database_11111111111111111111111111111111"
+	tests := []struct {
+		name       string
+		id         string
+		err        error
+		wantStatus int
+		wantCode   string
+		wantCalled bool
+	}{
+		{name: "success", id: databaseID, wantStatus: http.StatusNoContent, wantCalled: true},
+		{name: "attached", id: databaseID, err: backupservice.ErrDatabaseAttached, wantStatus: http.StatusConflict, wantCode: "database_attached", wantCalled: true},
+		{name: "unavailable", id: databaseID, err: backupservice.ErrDatabaseUnavailable, wantStatus: http.StatusConflict, wantCode: "database_unavailable", wantCalled: true},
+		{name: "missing", id: databaseID, err: metadata.ErrNotFound, wantStatus: http.StatusNotFound, wantCode: "not_found", wantCalled: true},
+		{name: "invalid", id: "invalid", wantStatus: http.StatusNotFound, wantCode: "not_found"},
+		{name: "failure", id: databaseID, err: errors.New("raw PostgreSQL /srv/secret detail"), wantStatus: http.StatusInternalServerError, wantCode: "deletion_failed", wantCalled: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server, _ := testServer(t)
+			manager := &fakeBackupManager{err: test.err}
+			server.backups = manager
+			response := request(t, server, http.MethodDelete, "/api/v1/databases/"+test.id)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, test.wantStatus, response.Body.String())
+			}
+			if (manager.deletedID != "") != test.wantCalled {
+				t.Fatalf("deletedID=%q wantCalled=%v", manager.deletedID, test.wantCalled)
+			}
+			if test.wantStatus == http.StatusNoContent {
+				if response.Body.Len() != 0 {
+					t.Fatalf("204 response body=%q", response.Body.String())
+				}
+				return
+			}
+			var body errorResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Error.Code != test.wantCode {
+				t.Fatalf("error code=%q want=%q", body.Error.Code, test.wantCode)
+			}
+			if strings.Contains(response.Body.String(), "PostgreSQL") || strings.Contains(response.Body.String(), "/srv/") {
+				t.Fatalf("response exposed internal deletion error: %s", response.Body.String())
+			}
+			assertSafeResponse(t, response.Body.String())
+		})
+	}
+}
+
 func apiJSONRequest(t *testing.T, server http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -184,6 +235,7 @@ type fakeBackupManager struct {
 	createdFor     string
 	restoreNewName string
 	restoreTarget  string
+	deletedID      string
 }
 
 func (manager *fakeBackupManager) ListBackups(context.Context) ([]metadata.Backup, error) {
@@ -209,4 +261,8 @@ func (manager *fakeBackupManager) RestoreAsNewDatabase(_ context.Context, _ stri
 func (manager *fakeBackupManager) RestoreInPlace(_ context.Context, _ string, targetDatabaseID string) (metadata.Database, error) {
 	manager.restoreTarget = targetDatabaseID
 	return manager.database, manager.err
+}
+func (manager *fakeBackupManager) DeleteDatabase(_ context.Context, databaseID string) error {
+	manager.deletedID = databaseID
+	return manager.err
 }

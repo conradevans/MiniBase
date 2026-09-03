@@ -36,6 +36,7 @@ type backupManager interface {
 	CreateBackup(context.Context, string) (metadata.Backup, error)
 	RestoreAsNewDatabase(context.Context, string, string) (metadata.Database, error)
 	RestoreInPlace(context.Context, string, string) (metadata.Database, error)
+	DeleteDatabase(context.Context, string) error
 }
 
 type Server struct {

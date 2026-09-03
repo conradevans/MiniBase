@@ -11,6 +11,7 @@ import (
 	"time"
 
 	backupservice "github.com/conradevans/MiniBase/internal/backups"
+	"github.com/conradevans/MiniBase/internal/ids"
 	"github.com/conradevans/MiniBase/internal/metadata"
 )
 
@@ -66,12 +67,15 @@ func (s *Server) routeDatabaseResource(response http.ResponseWriter, request *ht
 	parts := strings.Split(strings.TrimPrefix(request.URL.Path, databasesPathPrefix), "/")
 	switch {
 	case len(parts) == 1 && parts[0] != "":
-		if request.Method != http.MethodGet {
-			response.Header().Set("Allow", http.MethodGet)
+		switch request.Method {
+		case http.MethodGet:
+			s.handleGetDatabase(response, request, parts[0])
+		case http.MethodDelete:
+			s.handleDeleteDatabase(response, request, parts[0])
+		default:
+			response.Header().Set("Allow", "GET, DELETE")
 			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-			return
 		}
-		s.handleGetDatabase(response, request, parts[0])
 	case len(parts) == 2 && parts[0] != "" && parts[1] == "backups":
 		switch request.Method {
 		case http.MethodGet:
@@ -84,6 +88,31 @@ func (s *Server) routeDatabaseResource(response http.ResponseWriter, request *ht
 		}
 	default:
 		writeError(response, http.StatusNotFound, "not_found", "resource not found")
+	}
+}
+
+func (s *Server) handleDeleteDatabase(response http.ResponseWriter, request *http.Request, databaseID string) {
+	if !ids.ValidDatabaseID(databaseID) {
+		writeError(response, http.StatusNotFound, "not_found", "database not found")
+		return
+	}
+	if s.backups == nil {
+		writeError(response, http.StatusConflict, "database_unavailable", "database is not available")
+		return
+	}
+	err := s.backups.DeleteDatabase(request.Context(), databaseID)
+	switch {
+	case err == nil:
+		response.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, metadata.ErrNotFound), errors.Is(err, metadata.ErrInvalidIdentifier):
+		writeError(response, http.StatusNotFound, "not_found", "database not found")
+	case errors.Is(err, backupservice.ErrDatabaseAttached):
+		writeError(response, http.StatusConflict, "database_attached", "database is attached")
+	case errors.Is(err, backupservice.ErrDatabaseUnavailable):
+		writeError(response, http.StatusConflict, "database_unavailable", "database is not available")
+	default:
+		s.logger.Error("database deletion failed", "database_id", databaseID)
+		writeError(response, http.StatusInternalServerError, "deletion_failed", "database deletion failed")
 	}
 }
 

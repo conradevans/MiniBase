@@ -91,6 +91,47 @@ func TestFileStoreCreatesVerifiesOpensAndDeletesRestrictedArchive(t *testing.T) 
 	}
 }
 
+func TestFileStoreDeletesOnlyOneDatabaseArchiveDirectoryIdempotently(t *testing.T) {
+	rootPath := t.TempDir()
+	store, err := NewFileStore(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherDatabaseID := "database_ffffffffffffffffffffffffffffffff"
+	otherBackupID := "backup_ffffffffffffffffffffffffffffffff"
+	for _, fixture := range []struct {
+		databaseID string
+		backupID   string
+	}{
+		{databaseID: testDatabaseID, backupID: testBackupID},
+		{databaseID: otherDatabaseID, backupID: otherBackupID},
+	} {
+		if _, err := store.Create(fixture.databaseID, fixture.backupID, writeArchive, verifyArchive); err != nil {
+			t.Fatal(err)
+		}
+	}
+	partial := filepath.Join(rootPath, testDatabaseID, ".backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.tmp")
+	if err := os.WriteFile(partial, []byte("partial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteDatabase(testDatabaseID); err != nil {
+		t.Fatalf("DeleteDatabase() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootPath, testDatabaseID)); !os.IsNotExist(err) {
+		t.Fatalf("target archive directory remains: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootPath, otherDatabaseID, otherBackupID+".dump")); err != nil {
+		t.Fatalf("other database archive changed: %v", err)
+	}
+	if err := store.DeleteDatabase(testDatabaseID); err != nil {
+		t.Fatalf("idempotent DeleteDatabase() error = %v", err)
+	}
+	if err := store.DeleteDatabase("../escape"); !errors.Is(err, ErrArchiveInvalid) {
+		t.Fatalf("invalid DeleteDatabase() error = %v", err)
+	}
+}
+
 func TestFileStoreRefusesOverwriteAndPreservesFirstArchive(t *testing.T) {
 	store, err := NewFileStore(t.TempDir())
 	if err != nil {

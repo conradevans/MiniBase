@@ -175,6 +175,33 @@ func (s *Service) MarkDatabaseError(ctx context.Context, databaseID string) erro
 	return err
 }
 
+func (s *Service) DeleteDatabaseResources(ctx context.Context, record metadata.Database) error {
+	if !ids.ValidDatabaseID(record.ID) ||
+		!ids.ValidDatabaseInternalName(record.InternalName) ||
+		!ids.ValidRoleInternalName(record.RoleName) ||
+		record.Status != metadata.StatusError {
+
+		return ErrProvisioning
+	}
+	current, err := s.metadata.GetDatabase(ctx, record.ID)
+	if err != nil || current.ID != record.ID ||
+		current.InternalName != record.InternalName || current.RoleName != record.RoleName ||
+		current.Status != metadata.StatusError {
+
+		return ErrProvisioning
+	}
+	if err := s.postgres.DropDatabase(ctx, current.InternalName); err != nil {
+		return ErrProvisioning
+	}
+	if err := s.postgres.DropRole(ctx, current.RoleName); err != nil {
+		return ErrProvisioning
+	}
+	if err := s.credentials.Delete(current.ID); err != nil {
+		return ErrProvisioning
+	}
+	return nil
+}
+
 func (s *Service) CleanupRestoreTarget(record metadata.Database) error {
 	if !ids.ValidDatabaseID(record.ID) ||
 		!ids.ValidDatabaseInternalName(record.InternalName) ||

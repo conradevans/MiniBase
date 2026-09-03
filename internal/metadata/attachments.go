@@ -51,11 +51,21 @@ func (s *Store) CreateAttachment(ctx context.Context, databaseID, consumerType, 
 	if err := validateAttachmentInput(databaseID, consumerType, consumerRef, bindingName); err != nil {
 		return Attachment{}, err
 	}
-	database, err := s.GetDatabase(ctx, databaseID)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Attachment{}, err
+		return Attachment{}, fmt.Errorf("begin attachment creation: %w", err)
 	}
-	if database.Status != StatusReady {
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var status DatabaseStatus
+	if err := tx.QueryRowContext(ctx, "SELECT status FROM databases WHERE id = ?", databaseID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+		return Attachment{}, fmt.Errorf("%w: database", ErrNotFound)
+	} else if err != nil {
+		return Attachment{}, fmt.Errorf("verify attachment database: %w", err)
+	}
+	if status != StatusReady {
 		return Attachment{}, fmt.Errorf("%w: database is not ready", ErrConflict)
 	}
 	id, err := s.newAttachmentID()
@@ -71,13 +81,16 @@ func (s *Store) CreateAttachment(ctx context.Context, databaseID, consumerType, 
 		ConsumerRef: consumerRef, BindingName: bindingName,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO attachments (id,database_id,consumer_type,consumer_ref,binding_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?)`,
 		id, databaseID, consumerType, consumerRef, bindingName,
 		now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return Attachment{}, classifyWriteError("create attachment", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Attachment{}, fmt.Errorf("commit attachment creation: %w", err)
 	}
 	return attachment, nil
 }

@@ -15,7 +15,9 @@ import (
 var (
 	ErrBackupFailed        = errors.New("backup operation failed")
 	ErrBackupNotReady      = errors.New("backup is not ready")
+	ErrDatabaseAttached    = errors.New("database is attached")
 	ErrDatabaseUnavailable = errors.New("database is not available for backup or restore")
+	ErrDeletionFailed      = errors.New("database deletion failed")
 	ErrRestoreFailed       = errors.New("restore operation failed")
 	ErrRetentionFailed     = errors.New("backup retention failed")
 )
@@ -27,15 +29,19 @@ type metadataStore interface {
 	GetBackup(context.Context, string) (metadata.Backup, error)
 	ListBackups(context.Context) ([]metadata.Backup, error)
 	ListBackupsForDatabase(context.Context, string) ([]metadata.Backup, error)
+	ListAttachmentsForDatabase(context.Context, string) ([]metadata.Attachment, error)
+	UpdateDatabaseStatus(context.Context, string, metadata.DatabaseStatus) (metadata.Database, error)
 	UpdateBackupReady(context.Context, string, int64) (metadata.Backup, error)
 	UpdateBackupError(context.Context, string) (metadata.Backup, error)
 	DeleteBackupMetadata(context.Context, string) error
+	DeleteDatabaseMetadata(context.Context, string) error
 }
 
 type archiveStore interface {
 	Create(string, string, func(io.Writer) error, func(io.Reader) error) (int64, error)
 	Open(string, string) (*ArchiveReader, error)
 	Delete(string, string) error
+	DeleteDatabase(string) error
 	RemovePartial(string, string) error
 }
 
@@ -45,6 +51,7 @@ type provisioner interface {
 	MarkDatabaseRestoring(context.Context, string) (metadata.Database, error)
 	MarkDatabaseError(context.Context, string) error
 	CleanupRestoreTarget(metadata.Database) error
+	DeleteDatabaseResources(context.Context, metadata.Database) error
 }
 
 type Service struct {
@@ -82,6 +89,73 @@ func (s *Service) ListBackupsForDatabase(ctx context.Context, databaseID string)
 
 func (s *Service) GetBackup(ctx context.Context, backupID string) (metadata.Backup, error) {
 	return s.metadata.GetBackup(ctx, backupID)
+}
+
+func (s *Service) DeleteDatabase(ctx context.Context, databaseID string) error {
+	s.operations.Lock()
+	defer s.operations.Unlock()
+
+	if !ids.ValidDatabaseID(databaseID) {
+		return metadata.ErrInvalidIdentifier
+	}
+	database, err := s.metadata.GetDatabase(ctx, databaseID)
+	if err != nil {
+		return err
+	}
+	attachments, err := s.metadata.ListAttachmentsForDatabase(ctx, database.ID)
+	if err != nil {
+		return ErrDeletionFailed
+	}
+	if len(attachments) != 0 {
+		return ErrDatabaseAttached
+	}
+
+	switch database.Status {
+	case metadata.StatusReady:
+		database, err = s.metadata.UpdateDatabaseStatus(ctx, database.ID, metadata.StatusError)
+		if err != nil {
+			return ErrDeletionFailed
+		}
+		attachments, err = s.metadata.ListAttachmentsForDatabase(ctx, database.ID)
+		if err != nil {
+			return ErrDeletionFailed
+		}
+		if len(attachments) != 0 {
+			if _, restoreErr := s.metadata.UpdateDatabaseStatus(ctx, database.ID, metadata.StatusReady); restoreErr != nil {
+				return ErrDeletionFailed
+			}
+			return ErrDatabaseAttached
+		}
+	case metadata.StatusError:
+		// An interrupted deletion remains fail-closed and can resume safely.
+	default:
+		return ErrDatabaseUnavailable
+	}
+
+	backupRecords, err := s.metadata.ListBackupsForDatabase(ctx, database.ID)
+	if err != nil {
+		return ErrDeletionFailed
+	}
+	if s.provisioner == nil {
+		return ErrDeletionFailed
+	}
+	if err := s.provisioner.DeleteDatabaseResources(ctx, database); err != nil {
+		return ErrDeletionFailed
+	}
+	if err := s.archives.DeleteDatabase(database.ID); err != nil {
+		return ErrDeletionFailed
+	}
+	for _, backup := range backupRecords {
+		if err := s.metadata.DeleteBackupMetadata(ctx, backup.ID); err != nil &&
+			!errors.Is(err, metadata.ErrNotFound) {
+
+			return ErrDeletionFailed
+		}
+	}
+	if err := s.metadata.DeleteDatabaseMetadata(ctx, database.ID); err != nil {
+		return ErrDeletionFailed
+	}
+	return nil
 }
 
 func (s *Service) CreateBackup(ctx context.Context, databaseID string) (metadata.Backup, error) {

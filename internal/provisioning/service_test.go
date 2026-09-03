@@ -128,6 +128,42 @@ func TestCleanupRestoreTargetRejectsReadyOrMismatchedResource(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteDatabaseResourcesIsStrictOrderedAndRetrySafe(t *testing.T) {
+	fixture := newServiceFixture()
+	record := metadata.Database{
+		ID:           "database_0123456789abcdef0123456789abcdef",
+		DisplayName:  "Delete",
+		InternalName: testDatabaseName,
+		RoleName:     testRoleName,
+		Status:       metadata.StatusError,
+	}
+	fixture.metadata.record = record
+
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := fixture.service.DeleteDatabaseResources(context.Background(), record); err != nil {
+			t.Fatalf("DeleteDatabaseResources() attempt %d error = %v", attempt+1, err)
+		}
+	}
+	if len(fixture.postgres.droppedDatabases) != 2 || len(fixture.postgres.droppedRoles) != 2 {
+		t.Fatalf("idempotent PostgreSQL cleanup = databases %v roles %v",
+			fixture.postgres.droppedDatabases, fixture.postgres.droppedRoles)
+	}
+	if !fixture.credentials.deleted || fixture.credentials.deletedID != record.ID {
+		t.Fatal("database credential was not deleted")
+	}
+
+	ready := newServiceFixture()
+	ready.metadata.record = record
+	ready.metadata.record.Status = metadata.StatusReady
+	if err := ready.service.DeleteDatabaseResources(context.Background(), ready.metadata.record); !errors.Is(err, ErrProvisioning) {
+		t.Fatalf("ready database cleanup error = %v, want ErrProvisioning", err)
+	}
+	if len(ready.postgres.droppedDatabases) != 0 || len(ready.postgres.droppedRoles) != 0 || ready.credentials.deleted {
+		t.Fatal("strict cleanup touched a database outside fail-closed error state")
+	}
+}
+
 func TestSecretWriteFailureRemovesMetadataWithoutTouchingPostgres(t *testing.T) {
 	fixture := newServiceFixture()
 	fixture.credentials.createErr = errors.New("secret write failed")

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -249,6 +250,130 @@ func TestRestoreInPlaceSafetyBackupIdentityAndFailureBehavior(t *testing.T) {
 	}
 }
 
+func TestDeleteDatabaseRefusesAttachedWithoutDestructiveChanges(t *testing.T) {
+	fixture := newBackupServiceFixture()
+	backup := fixture.addReadyBackup(metadata.BackupKindManual, fixture.metadata.now)
+	fixture.metadata.attachments = []metadata.Attachment{{
+		ID: "attachment_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", DatabaseID: serviceDatabaseID,
+	}}
+	fixture.metadata.events = nil
+
+	if err := fixture.service.DeleteDatabase(context.Background(), serviceDatabaseID); !errors.Is(err, ErrDatabaseAttached) {
+		t.Fatalf("DeleteDatabase() error = %v, want ErrDatabaseAttached", err)
+	}
+	if fixture.metadata.databases[serviceDatabaseID].Status != metadata.StatusReady ||
+		fixture.provisioner.deleteCalls != 0 || len(fixture.metadata.events) != 0 {
+
+		t.Fatalf("attached deletion changed state: database=%#v calls=%d events=%v",
+			fixture.metadata.databases[serviceDatabaseID], fixture.provisioner.deleteCalls, fixture.metadata.events)
+	}
+	if _, exists := fixture.metadata.backups[backup.ID]; !exists {
+		t.Fatal("attached deletion removed backup metadata")
+	}
+	if _, exists := fixture.archives.files[archiveKey(serviceDatabaseID, backup.ID)]; !exists {
+		t.Fatal("attached deletion removed backup archive")
+	}
+}
+
+func TestDeleteDatabaseRechecksAttachmentsAfterFailClosedTransition(t *testing.T) {
+	fixture := newBackupServiceFixture()
+	fixture.metadata.statusHook = func(status metadata.DatabaseStatus) {
+		if status == metadata.StatusError {
+			fixture.metadata.attachments = []metadata.Attachment{{
+				ID: "attachment_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", DatabaseID: serviceDatabaseID,
+			}}
+		}
+	}
+
+	if err := fixture.service.DeleteDatabase(context.Background(), serviceDatabaseID); !errors.Is(err, ErrDatabaseAttached) {
+		t.Fatalf("DeleteDatabase() error = %v, want ErrDatabaseAttached", err)
+	}
+	if fixture.metadata.databases[serviceDatabaseID].Status != metadata.StatusReady {
+		t.Fatal("attachment race did not restore the database to ready")
+	}
+	if fixture.provisioner.deleteCalls != 0 || contains(fixture.metadata.events, "archives") {
+		t.Fatalf("attachment race triggered destructive work: %v", fixture.metadata.events)
+	}
+}
+
+func TestDeleteStandaloneDatabaseRemovesMetadataLast(t *testing.T) {
+	fixture := newBackupServiceFixture()
+	fixture.addReadyBackup(metadata.BackupKindManual, fixture.metadata.now)
+	fixture.addReadyBackup(metadata.BackupKindAutomatic, fixture.metadata.now.Add(-time.Hour))
+	fixture.metadata.events = nil
+
+	if err := fixture.service.DeleteDatabase(context.Background(), serviceDatabaseID); err != nil {
+		t.Fatalf("DeleteDatabase() error = %v", err)
+	}
+	if _, exists := fixture.metadata.databases[serviceDatabaseID]; exists {
+		t.Fatal("database metadata still exists")
+	}
+	if len(fixture.metadata.backups) != 0 || len(fixture.archives.files) != 0 {
+		t.Fatalf("backup cleanup incomplete: metadata=%v archives=%v", fixture.metadata.backups, fixture.archives.files)
+	}
+	if fixture.provisioner.deleteCalls != 1 {
+		t.Fatalf("resource cleanup calls = %d, want 1", fixture.provisioner.deleteCalls)
+	}
+	wantPrefix := []string{"status:error", "database", "role", "credential", "archives"}
+	if len(fixture.metadata.events) < len(wantPrefix)+3 {
+		t.Fatalf("deletion events = %v", fixture.metadata.events)
+	}
+	for index, want := range wantPrefix {
+		if fixture.metadata.events[index] != want {
+			t.Fatalf("deletion events = %v; event %d want %q", fixture.metadata.events, index, want)
+		}
+	}
+	if fixture.metadata.events[len(fixture.metadata.events)-1] != "database_metadata" {
+		t.Fatalf("database metadata was not deleted last: %v", fixture.metadata.events)
+	}
+	for _, event := range fixture.metadata.events[len(wantPrefix) : len(fixture.metadata.events)-1] {
+		if event != "backup_metadata" {
+			t.Fatalf("unexpected event before database metadata deletion: %v", fixture.metadata.events)
+		}
+	}
+}
+
+func TestDeleteDatabaseRetriesAfterPartialCleanup(t *testing.T) {
+	fixture := newBackupServiceFixture()
+	fixture.addReadyBackup(metadata.BackupKindManual, fixture.metadata.now)
+	fixture.archives.deleteDatabaseErr = errors.New("injected archive cleanup failure")
+
+	if err := fixture.service.DeleteDatabase(context.Background(), serviceDatabaseID); !errors.Is(err, ErrDeletionFailed) {
+		t.Fatalf("first DeleteDatabase() error = %v, want ErrDeletionFailed", err)
+	}
+	if fixture.metadata.databases[serviceDatabaseID].Status != metadata.StatusError {
+		t.Fatal("partial deletion did not remain fail-closed")
+	}
+	if len(fixture.metadata.backups) != 1 {
+		t.Fatal("backup metadata changed after archive cleanup failure")
+	}
+
+	if err := fixture.service.DeleteDatabase(context.Background(), serviceDatabaseID); err != nil {
+		t.Fatalf("retry DeleteDatabase() error = %v", err)
+	}
+	if _, exists := fixture.metadata.databases[serviceDatabaseID]; exists ||
+		len(fixture.metadata.backups) != 0 || len(fixture.archives.files) != 0 {
+
+		t.Fatal("retry did not finish partial cleanup")
+	}
+	if fixture.provisioner.deleteCalls != 2 {
+		t.Fatalf("idempotent resource cleanup calls = %d, want 2", fixture.provisioner.deleteCalls)
+	}
+}
+
+func TestDeleteDatabaseUnknownAndInvalidReturnMetadataErrors(t *testing.T) {
+	fixture := newBackupServiceFixture()
+	if err := fixture.service.DeleteDatabase(context.Background(), "database_ffffffffffffffffffffffffffffffff"); !errors.Is(err, metadata.ErrNotFound) {
+		t.Fatalf("unknown database error = %v", err)
+	}
+	if err := fixture.service.DeleteDatabase(context.Background(), "invalid"); !errors.Is(err, metadata.ErrInvalidIdentifier) {
+		t.Fatalf("invalid database error = %v", err)
+	}
+	if fixture.provisioner.deleteCalls != 0 {
+		t.Fatal("unknown or invalid deletion touched resources")
+	}
+}
+
 func TestRunDueAutomaticBackupsIsIdempotent(t *testing.T) {
 	fixture := newBackupServiceFixture()
 	fixture.service.now = func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) }
@@ -281,7 +406,7 @@ func newBackupServiceFixture() serviceFixture {
 		backups: make(map[string]metadata.Backup),
 		now:     time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC),
 	}
-	archives := &fakeArchiveStore{files: make(map[string][]byte)}
+	archives := &fakeArchiveStore{files: make(map[string][]byte), metadata: meta}
 	postgres := &fakeBackupPostgres{}
 	provisioner := &fakeProvisioner{metadata: meta}
 	service := NewService(meta, archives, postgres, provisioner)
@@ -306,11 +431,14 @@ func (fixture *serviceFixture) hasReadyKind(kind metadata.BackupKind) bool {
 }
 
 type fakeBackupMetadata struct {
-	databases map[string]metadata.Database
-	backups   map[string]metadata.Backup
-	next      int
-	now       time.Time
-	readyErr  error
+	databases   map[string]metadata.Database
+	backups     map[string]metadata.Backup
+	attachments []metadata.Attachment
+	next        int
+	now         time.Time
+	readyErr    error
+	statusHook  func(metadata.DatabaseStatus)
+	events      []string
 }
 
 func (store *fakeBackupMetadata) GetDatabase(_ context.Context, id string) (metadata.Database, error) {
@@ -326,6 +454,28 @@ func (store *fakeBackupMetadata) ListDatabases(context.Context) ([]metadata.Data
 		result = append(result, database)
 	}
 	return result, nil
+}
+func (store *fakeBackupMetadata) ListAttachmentsForDatabase(_ context.Context, databaseID string) ([]metadata.Attachment, error) {
+	result := make([]metadata.Attachment, 0)
+	for _, attachment := range store.attachments {
+		if attachment.DatabaseID == databaseID {
+			result = append(result, attachment)
+		}
+	}
+	return result, nil
+}
+func (store *fakeBackupMetadata) UpdateDatabaseStatus(_ context.Context, id string, status metadata.DatabaseStatus) (metadata.Database, error) {
+	database, exists := store.databases[id]
+	if !exists {
+		return metadata.Database{}, metadata.ErrNotFound
+	}
+	database.Status = status
+	store.databases[id] = database
+	store.events = append(store.events, "status:"+string(status))
+	if store.statusHook != nil {
+		store.statusHook(status)
+	}
+	return database, nil
 }
 func (store *fakeBackupMetadata) CreateBackup(_ context.Context, databaseID string, kind metadata.BackupKind) (metadata.Backup, error) {
 	store.next++
@@ -390,16 +540,24 @@ func (store *fakeBackupMetadata) UpdateBackupError(_ context.Context, id string)
 	return backup, nil
 }
 func (store *fakeBackupMetadata) DeleteBackupMetadata(_ context.Context, id string) error {
+	store.events = append(store.events, "backup_metadata")
 	delete(store.backups, id)
+	return nil
+}
+func (store *fakeBackupMetadata) DeleteDatabaseMetadata(_ context.Context, id string) error {
+	store.events = append(store.events, "database_metadata")
+	delete(store.databases, id)
 	return nil
 }
 
 type fakeArchiveStore struct {
-	files     map[string][]byte
-	partial   bool
-	createErr error
-	deleteErr error
-	unrelated bool
+	files             map[string][]byte
+	partial           bool
+	createErr         error
+	deleteErr         error
+	deleteDatabaseErr error
+	unrelated         bool
+	metadata          *fakeBackupMetadata
 }
 
 func (store *fakeArchiveStore) Create(databaseID, backupID string, dump func(io.Writer) error, verify func(io.Reader) error) (int64, error) {
@@ -430,6 +588,22 @@ func (store *fakeArchiveStore) Delete(databaseID, backupID string) error {
 		return store.deleteErr
 	}
 	delete(store.files, archiveKey(databaseID, backupID))
+	return nil
+}
+func (store *fakeArchiveStore) DeleteDatabase(databaseID string) error {
+	if store.metadata != nil {
+		store.metadata.events = append(store.metadata.events, "archives")
+	}
+	if store.deleteDatabaseErr != nil {
+		err := store.deleteDatabaseErr
+		store.deleteDatabaseErr = nil
+		return err
+	}
+	for key := range store.files {
+		if strings.HasPrefix(key, databaseID+"/") {
+			delete(store.files, key)
+		}
+	}
 	return nil
 }
 func (store *fakeArchiveStore) RemovePartial(string, string) error {
@@ -482,6 +656,8 @@ type fakeProvisioner struct {
 	metadata          *fakeBackupMetadata
 	cleaned           bool
 	credentialDeleted bool
+	deleteCalls       int
+	deleteErr         error
 }
 
 func (provisioner *fakeProvisioner) ProvisionDatabaseForRestore(_ context.Context, displayName string) (metadata.Database, error) {
@@ -515,6 +691,15 @@ func (provisioner *fakeProvisioner) CleanupRestoreTarget(database metadata.Datab
 	delete(provisioner.metadata.databases, database.ID)
 	provisioner.cleaned = true
 	provisioner.credentialDeleted = true
+	return nil
+}
+func (provisioner *fakeProvisioner) DeleteDatabaseResources(_ context.Context, _ metadata.Database) error {
+	provisioner.deleteCalls++
+	provisioner.metadata.events = append(provisioner.metadata.events, "database")
+	if provisioner.deleteErr != nil {
+		return provisioner.deleteErr
+	}
+	provisioner.metadata.events = append(provisioner.metadata.events, "role", "credential")
 	return nil
 }
 

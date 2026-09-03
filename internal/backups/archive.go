@@ -211,6 +211,22 @@ func (store *FileStore) Delete(databaseID, backupID string) error {
 	return syncRootDirectory(root, ".")
 }
 
+func (store *FileStore) DeleteDatabase(databaseID string) error {
+	if !ids.ValidDatabaseID(databaseID) {
+		return ErrArchiveInvalid
+	}
+	root, err := store.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	if err := root.RemoveAll(databaseID); err != nil {
+		return fmt.Errorf("remove database backup archives: %w", err)
+	}
+	return syncRootDirectory(root, ".")
+}
+
 func (store *FileStore) RemovePartial(databaseID, backupID string) error {
 	if !ids.ValidDatabaseID(databaseID) || !ids.ValidBackupID(backupID) {
 		return ErrArchiveInvalid
