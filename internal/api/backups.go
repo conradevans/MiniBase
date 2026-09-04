@@ -76,6 +76,54 @@ func (s *Server) routeDatabaseResource(response http.ResponseWriter, request *ht
 			response.Header().Set("Allow", "GET, DELETE")
 			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		}
+	case len(parts) == 2 &&
+		parts[0] != "" &&
+		parts[1] == "attach":
+
+		if request.Method != http.MethodPost {
+			response.Header().Set(
+				"Allow",
+				http.MethodPost,
+			)
+			writeError(
+				response,
+				http.StatusMethodNotAllowed,
+				"method_not_allowed",
+				"method not allowed",
+			)
+			return
+		}
+
+		s.handleAttachDatabase(
+			response,
+			request,
+			parts[0],
+		)
+
+	case len(parts) == 2 &&
+		parts[0] != "" &&
+		parts[1] == "detach":
+
+		if request.Method != http.MethodPost {
+			response.Header().Set(
+				"Allow",
+				http.MethodPost,
+			)
+			writeError(
+				response,
+				http.StatusMethodNotAllowed,
+				"method_not_allowed",
+				"method not allowed",
+			)
+			return
+		}
+
+		s.handleDetachDatabase(
+			response,
+			request,
+			parts[0],
+		)
+
 	case len(parts) == 2 && parts[0] != "" && parts[1] == "backups":
 		switch request.Method {
 		case http.MethodGet:

@@ -84,6 +84,12 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 			response.Header().Set("Allow", "GET, POST")
 			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		}
+	case request.URL.Path == "/api/v1/deployments":
+		s.requireGet(
+			response,
+			request,
+			s.handleMiniDeployDeployments,
+		)
 	case request.URL.Path == "/api/v1/backups":
 		s.routeBackupCollection(response, request)
 	case strings.HasPrefix(request.URL.Path, backupsPathPrefix):

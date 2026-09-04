@@ -40,14 +40,15 @@ type backupManager interface {
 }
 
 type Server struct {
-	store            metadataReader
-	attachments      attachmentStore
-	credentials      credentialReader
-	integrationToken []byte
-	provisioner      databaseProvisioner
-	backups          backupManager
-	logger           *slog.Logger
-	frontend         http.Handler
+	store               metadataReader
+	attachments         attachmentStore
+	credentials         credentialReader
+	integrationToken    []byte
+	provisioner         databaseProvisioner
+	backups             backupManager
+	logger              *slog.Logger
+	frontend            http.Handler
+	miniDeployLifecycle miniDeployLifecycleClient
 }
 
 func New(store metadataReader, provisioner databaseProvisioner, backupService backupManager, frontendDirectory string, logger *slog.Logger) *Server {

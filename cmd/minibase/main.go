@@ -16,6 +16,7 @@ import (
 	"github.com/conradevans/MiniBase/internal/config"
 	"github.com/conradevans/MiniBase/internal/integrationauth"
 	"github.com/conradevans/MiniBase/internal/metadata"
+	"github.com/conradevans/MiniBase/internal/minideploy"
 	"github.com/conradevans/MiniBase/internal/provisioning"
 	"github.com/conradevans/MiniBase/internal/secrets"
 )
@@ -92,6 +93,20 @@ func run() int {
 
 	handler := api.New(store, provisioningService, backupService, cfg.FrontendDir, logger)
 	handler.ConfigureMiniDeployIntegration(integrationToken, credentialStore)
+
+	miniDeployClient, err := minideploy.NewClient(
+		minideploy.DefaultURL,
+		integrationToken,
+		&http.Client{
+			Timeout: 10 * time.Minute,
+		},
+	)
+	if err != nil {
+		logger.Error("MiniDeploy lifecycle client initialization failed")
+		return 1
+	}
+	handler.ConfigureMiniDeployLifecycle(miniDeployClient)
+
 	server := api.HTTPServer(cfg.ListenAddress, handler)
 	listener, err := net.Listen("tcp", cfg.ListenAddress)
 	if err != nil {
