@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { createAdminApi, toAdminBackup, toAdminDatabase } from './admin'
+import {
+  createAdminApi,
+  toAdminBackup,
+  toAdminDatabase,
+  toMiniDeployDeployment,
+} from './admin'
 
 const database = {
   id: 'database_0123456789abcdef0123456789abcdef',
@@ -84,6 +89,66 @@ describe('admin API', () => {
     expect(requester).toHaveBeenCalledWith(
       `/api/v1/databases/${database.id}`,
       { method: 'DELETE' },
+    )
+  })
+
+  test('uses explicit MiniDeploy lifecycle API requests', async () => {
+    const deployment = {
+      app: 'scheduler',
+      supported: true,
+      status: 'running',
+      databaseAttached: false,
+      databaseDetached: false,
+    }
+
+    expect(toMiniDeployDeployment(deployment)).toEqual({
+      ...deployment,
+      databaseId: '',
+    })
+
+    const requester = vi.fn()
+      .mockResolvedValueOnce([deployment])
+      .mockResolvedValueOnce(database)
+      .mockResolvedValueOnce(database)
+
+    const api = createAdminApi(requester)
+
+    await expect(api.getDeployments()).resolves.toEqual([
+      toMiniDeployDeployment(deployment),
+    ])
+
+    await api.attachDatabase(
+      database.id,
+      'scheduler',
+    )
+
+    await api.detachDatabase(database.id)
+
+    expect(requester).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/deployments',
+    )
+
+    expect(requester).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/databases/${database.id}/attach`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          app: 'scheduler',
+        }),
+      },
+    )
+
+    expect(requester).toHaveBeenNthCalledWith(
+      3,
+      `/api/v1/databases/${database.id}/detach`,
+      {
+        method: 'POST',
+      },
     )
   })
 

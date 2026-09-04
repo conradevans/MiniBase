@@ -17,6 +17,7 @@ function apiFor(value) {
     getDatabase: vi.fn().mockResolvedValue(value),
     getDatabaseBackups: vi.fn().mockResolvedValue([]),
     getDatabases: vi.fn().mockResolvedValue([database]),
+    getDeployments: vi.fn().mockResolvedValue([]),
   }
 }
 
@@ -44,6 +45,9 @@ describe('MiniDeploy attachment visibility', () => {
     expect(screen.getAllByText('myscheduler').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('MiniDeploy')).toBeTruthy()
     expect(screen.getByText('Primary')).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Detach' }),
+    ).toBeTruthy()
     expect(view.container.textContent).not.toContain('mock-secret-must-not-render')
     expect(view.container.textContent).not.toContain('postgresql://')
   })
@@ -53,5 +57,10 @@ describe('MiniDeploy attachment visibility', () => {
       <DatabaseDetailPage api={apiFor(database)} databaseID={database.id} navigate={() => {}} />,
     )
     expect(await screen.findByText('No MiniDeploy application is attached to this database.')).toBeTruthy()
+    expect(
+      screen.getByRole('button', {
+        name: 'Attach to deployment',
+      }),
+    ).toBeTruthy()
   })
 })

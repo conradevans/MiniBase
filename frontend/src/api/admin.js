@@ -2,6 +2,7 @@ import { requestJSON } from './request'
 import {
   requireBackupKind,
   requireBackupStatus,
+  requireBoolean,
   requireDatabaseStatus,
   requireNullableString,
   requireNumber,
@@ -34,6 +35,21 @@ export function toAdminDatabase(value) {
     attachments: Array.isArray(database.attachments)
       ? database.attachments.map(toAdminAttachment)
       : [],
+  }
+}
+
+export function toMiniDeployDeployment(value) {
+  const deployment = requireRecord(value)
+
+  return {
+    app: requireString(deployment.app),
+    supported: requireBoolean(deployment.supported),
+    status: requireString(deployment.status),
+    databaseAttached: requireBoolean(deployment.databaseAttached),
+    databaseDetached: requireBoolean(deployment.databaseDetached),
+    databaseId: deployment.databaseId === undefined
+      ? ''
+      : requireString(deployment.databaseId),
   }
 }
 
@@ -112,6 +128,40 @@ export function createAdminApi(requester = requestJSON) {
       return requester(`/api/v1/databases/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       })
+    },
+
+    async getDeployments() {
+      const result = await requester('/api/v1/deployments')
+      if (!Array.isArray(result)) {
+        throw new Error('invalid deployment list')
+      }
+      return result.map(toMiniDeployDeployment)
+    },
+
+    async attachDatabase(id, app) {
+      return toAdminDatabase(
+        await requester(
+          `/api/v1/databases/${encodeURIComponent(id)}/attach`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ app }),
+          },
+        ),
+      )
+    },
+
+    async detachDatabase(id) {
+      return toAdminDatabase(
+        await requester(
+          `/api/v1/databases/${encodeURIComponent(id)}/detach`,
+          {
+            method: 'POST',
+          },
+        ),
+      )
     },
 
     async getBackups() {

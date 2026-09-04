@@ -24,6 +24,13 @@ export function requireString(value) {
   return value
 }
 
+export function requireBoolean(value) {
+  if (typeof value !== 'boolean') {
+    throw new MiniBaseApiError('MiniBase returned an unexpected response.')
+  }
+  return value
+}
+
 export function requireDatabaseStatus(value) {
   if (!databaseStatuses.has(value)) {
     throw new MiniBaseApiError('MiniBase returned an unexpected response.')

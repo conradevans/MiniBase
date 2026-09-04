@@ -6,6 +6,7 @@ import { formatTimestamp } from '../utils/format'
 import AppLink from './AppLink'
 import BackupList from './BackupList'
 import DeleteDatabaseDialog from './DeleteDatabaseDialog'
+import DatabaseLifecycleDialog from './DatabaseLifecycleDialog'
 import RestoreBackupDialog from './RestoreBackupDialog'
 import StatusBadge from './StatusBadge'
 
@@ -19,6 +20,11 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
   const [backupNotice, setBackupNotice] = useState('')
   const [selectedBackup, setSelectedBackup] = useState(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [lifecycleDialog, setLifecycleDialog] = useState(null)
+  const [deployments, setDeployments] = useState([])
+  const [deploymentLoading, setDeploymentLoading] = useState(false)
+  const [lifecycleError, setLifecycleError] = useState('')
+  const [lifecycleNotice, setLifecycleNotice] = useState('')
   const createBackupButtonRef = useRef(null)
 
   const loadBackups = useCallback(async () => {
@@ -118,6 +124,74 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
     navigate('/admin/databases')
   }
 
+  async function openAttachDialog() {
+    if (deploymentLoading) {
+      return
+    }
+
+    setDeploymentLoading(true)
+    setLifecycleError('')
+    setLifecycleNotice('')
+
+    try {
+      const result = await api.getDeployments()
+      setDeployments(result)
+      setLifecycleDialog('attach')
+    } catch (error) {
+      setLifecycleError(
+        safeErrorMessage(
+          error,
+          'Unable to load MiniDeploy deployments.',
+        ),
+      )
+    } finally {
+      setDeploymentLoading(false)
+    }
+  }
+
+  async function attachDatabase(app) {
+    const updated = toAdminDatabase(
+      await api.attachDatabase(databaseID, app),
+    )
+
+    setState({
+      loading: false,
+      error: '',
+      database: updated,
+    })
+    setLifecycleDialog(null)
+    setLifecycleError('')
+    setLifecycleNotice(
+      `${updated.displayName} is attached to ${app}.`,
+    )
+  }
+
+  async function detachDatabase() {
+    const currentAttachment = state.database?.attachments?.find(
+      (item) => (
+        item.consumerType === 'minideploy' &&
+        item.bindingName === 'primary'
+      ),
+    )
+
+    const app = currentAttachment?.consumerRef || 'the deployment'
+
+    const updated = toAdminDatabase(
+      await api.detachDatabase(databaseID),
+    )
+
+    setState({
+      loading: false,
+      error: '',
+      database: updated,
+    })
+    setLifecycleDialog(null)
+    setLifecycleError('')
+    setLifecycleNotice(
+      `Database detached. ${app} is stopped until a database is attached.`,
+    )
+  }
+
   if (state.loading) {
     return <div className="empty-state">Loading database…</div>
   }
@@ -190,10 +264,67 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
                 <div><dt>Service</dt><dd>MiniDeploy</dd></div>
                 <div><dt>Binding</dt><dd>Primary</dd></div>
               </dl>
+
+              <div className="connection-actions">
+                <div>
+                  <strong>Status</strong>
+                  <span>Attached</span>
+                </div>
+
+                <button
+                  className="button secondary compact-button"
+                  type="button"
+                  onClick={() => {
+                    setLifecycleError('')
+                    setLifecycleNotice('')
+                    setLifecycleDialog('detach')
+                  }}
+                >
+                  Detach
+                </button>
+              </div>
             </div>
           ) : (
-            <p>No MiniDeploy application is attached to this database.</p>
+            <div className="attachment-detail">
+              <p>No MiniDeploy application is attached to this database.</p>
+
+              <div className="connection-actions">
+                <div>
+                  <strong>Status</strong>
+                  <span>Standalone</span>
+                </div>
+
+                <button
+                  className="button secondary compact-button"
+                  type="button"
+                  onClick={openAttachDialog}
+                  disabled={
+                    deploymentLoading ||
+                    database.status !== 'ready'
+                  }
+                >
+                  {deploymentLoading
+                    ? 'Loading deployments…'
+                    : 'Attach to deployment'}
+                </button>
+              </div>
+            </div>
           )}
+
+          {lifecycleNotice ? (
+            <div className="notice success connection-notice">
+              {lifecycleNotice}
+            </div>
+          ) : null}
+
+          {lifecycleError ? (
+            <div
+              className="notice error connection-notice"
+              role="alert"
+            >
+              {lifecycleError}
+            </div>
+          ) : null}
         </article>
       </section>
 
@@ -306,6 +437,18 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
           databases={databases}
           onClose={() => setSelectedBackup(null)}
           onRestored={restoreBackup}
+        />
+      ) : null}
+
+      {lifecycleDialog ? (
+        <DatabaseLifecycleDialog
+          mode={lifecycleDialog}
+          database={database}
+          attachment={attachment}
+          deployments={deployments}
+          onClose={() => setLifecycleDialog(null)}
+          onAttach={attachDatabase}
+          onDetach={detachDatabase}
         />
       ) : null}
 
