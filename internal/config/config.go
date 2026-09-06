@@ -11,6 +11,7 @@ import (
 
 const (
 	DefaultListenAddress        = "127.0.0.1:9100"
+	DefaultPublicListenAddress  = "127.0.0.1:9103"
 	DefaultMetadataDBPath       = "/srv/minibase/data/minibase.db"
 	DefaultIntegrationTokenPath = "/srv/minibase/secrets/minideploy-integration-token"
 	DefaultDatabaseSecretRoot   = "/srv/minibase/secrets/databases"
@@ -20,6 +21,7 @@ const (
 
 type Config struct {
 	ListenAddress        string
+	PublicListenAddress  string
 	MetadataDBPath       string
 	DatabaseSecretRoot   string
 	BackupRoot           string
@@ -30,7 +32,8 @@ type Config struct {
 
 func Parse(args []string) (Config, error) {
 	flags := flag.NewFlagSet("minibase", flag.ContinueOnError)
-	listenAddress := flags.String("listen", DefaultListenAddress, "loopback HTTP listen address")
+	listenAddress := flags.String("listen", DefaultListenAddress, "private loopback HTTP listen address")
+	publicListenAddress := flags.String("public-listen", DefaultPublicListenAddress, "public-origin loopback HTTP listen address")
 	metadataDBPath := flags.String("metadata-db", DefaultMetadataDBPath, "SQLite metadata database path")
 	databaseSecretRoot := flags.String("database-secrets", DefaultDatabaseSecretRoot, "application database credential root")
 	backupRoot := flags.String("backup-root", DefaultBackupRoot, "PostgreSQL backup archive root")
@@ -46,6 +49,12 @@ func Parse(args []string) (Config, error) {
 	}
 	if err := validateLoopbackAddress(*listenAddress); err != nil {
 		return Config{}, err
+	}
+	if err := validateLoopbackAddress(*publicListenAddress); err != nil {
+		return Config{}, fmt.Errorf("invalid public listen address: %w", err)
+	}
+	if *listenAddress == *publicListenAddress {
+		return Config{}, fmt.Errorf("private and public listen addresses must differ")
 	}
 
 	absoluteDBPath, err := resolvePath("metadata database", *metadataDBPath)
@@ -71,6 +80,7 @@ func Parse(args []string) (Config, error) {
 
 	return Config{
 		ListenAddress:        *listenAddress,
+		PublicListenAddress:  *publicListenAddress,
 		MetadataDBPath:       absoluteDBPath,
 		DatabaseSecretRoot:   absoluteSecretRoot,
 		BackupRoot:           absoluteBackupRoot,

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/conradevans/MiniBase/internal/accessauth"
 	"github.com/conradevans/MiniBase/internal/api"
 	"github.com/conradevans/MiniBase/internal/backups"
 	"github.com/conradevans/MiniBase/internal/config"
@@ -22,6 +23,28 @@ import (
 )
 
 const shutdownTimeout = 10 * time.Second
+
+type serverResult struct {
+	name string
+	err  error
+}
+
+func serveHTTP(
+	name string,
+	server *http.Server,
+	listener net.Listener,
+	results chan<- serverResult,
+) {
+	err := server.Serve(listener)
+	if errors.Is(err, http.ErrServerClosed) {
+		err = nil
+	}
+
+	results <- serverResult{
+		name: name,
+		err:  err,
+	}
+}
 
 func main() {
 	os.Exit(run())
@@ -107,50 +130,169 @@ func run() int {
 	}
 	handler.ConfigureMiniDeployLifecycle(miniDeployClient)
 
-	server := api.HTTPServer(cfg.ListenAddress, handler)
-	listener, err := net.Listen("tcp", cfg.ListenAddress)
+	accessValidator, accessErr :=
+		accessauth.NewCloudflareAccessValidator(
+			accessauth.ConfigFromEnvironment(),
+		)
+	if accessErr != nil {
+		logger.Warn(
+			"public administrator routes disabled",
+		)
+		accessValidator = nil
+	}
+
+	managementServer := api.HTTPServer(
+		cfg.ListenAddress,
+		handler,
+	)
+
+	publicServer := api.HTTPServer(
+		cfg.PublicListenAddress,
+		api.PublicHandler(
+			handler,
+			accessValidator,
+		),
+	)
+
+	managementListener, err := net.Listen(
+		"tcp",
+		cfg.ListenAddress,
+	)
 	if err != nil {
-		logger.Error("HTTP listener startup failed")
+		logger.Error(
+			"private HTTP listener startup failed",
+		)
+		return 1
+	}
+
+	publicListener, err := net.Listen(
+		"tcp",
+		cfg.PublicListenAddress,
+	)
+	if err != nil {
+		_ = managementListener.Close()
+		logger.Error(
+			"public HTTP listener startup failed",
+		)
 		return 1
 	}
 
 	logger.Info(
-		"MiniBase control plane started",
-		"listen", listener.Addr().String(),
-		"schema_version", schemaVersion,
+		"MiniBase private control plane started",
+		"listen",
+		managementListener.Addr().String(),
+		"schema_version",
+		schemaVersion,
 	)
 
-	serverErrors := make(chan error, 1)
-	go func() {
-		serverErrors <- server.Serve(listener)
-	}()
+	logger.Info(
+		"MiniBase public origin started",
+		"listen",
+		publicListener.Addr().String(),
+	)
+
+	results := make(chan serverResult, 2)
+
+	go serveHTTP(
+		"private",
+		managementServer,
+		managementListener,
+		results,
+	)
+
+	go serveHTTP(
+		"public",
+		publicServer,
+		publicListener,
+		results,
+	)
 
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(
+		signals,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
 	defer signal.Stop(signals)
 
+	completedServers := 0
+	exitCode := 0
+
 	select {
-	case signal := <-signals:
-		logger.Info("shutdown requested", "signal", signal.String())
-	case serveErr := <-serverErrors:
-		if !errors.Is(serveErr, http.ErrServerClosed) {
-			logger.Error("HTTP server stopped unexpectedly")
-			return 1
+	case receivedSignal := <-signals:
+		logger.Info(
+			"shutdown requested",
+			"signal",
+			receivedSignal.String(),
+		)
+
+	case result := <-results:
+		completedServers = 1
+		exitCode = 1
+
+		if result.err != nil {
+			logger.Error(
+				"HTTP server stopped unexpectedly",
+				"server",
+				result.name,
+			)
+		} else {
+			logger.Error(
+				"HTTP server stopped unexpectedly",
+				"server",
+				result.name,
+			)
 		}
-		return 0
 	}
 
-	shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	shutdownContext, cancel :=
+		context.WithTimeout(
+			context.Background(),
+			shutdownTimeout,
+		)
 	defer cancel()
-	if err := server.Shutdown(shutdownContext); err != nil {
-		logger.Error("graceful shutdown failed")
-		return 1
+
+	for _, target := range []struct {
+		name   string
+		server *http.Server
+	}{
+		{
+			name:   "private",
+			server: managementServer,
+		},
+		{
+			name:   "public",
+			server: publicServer,
+		},
+	} {
+		if err := target.server.Shutdown(
+			shutdownContext,
+		); err != nil {
+			logger.Error(
+				"graceful shutdown failed",
+				"server",
+				target.name,
+			)
+			exitCode = 1
+		}
 	}
 
-	serveErr := <-serverErrors
-	if !errors.Is(serveErr, http.ErrServerClosed) {
-		logger.Error("HTTP server stopped unexpectedly during shutdown")
-		return 1
+	for completedServers < 2 {
+		result := <-results
+		completedServers++
+
+		if result.err != nil {
+			logger.Error(
+				"HTTP server shutdown failed",
+				"server",
+				result.name,
+			)
+			exitCode = 1
+		}
+	}
+
+	if exitCode != 0 {
+		return exitCode
 	}
 
 	logger.Info("MiniBase control plane stopped")
