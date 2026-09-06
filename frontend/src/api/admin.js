@@ -88,8 +88,35 @@ function toAdminStatus(value) {
   }
 }
 
+function toAdminSession(value) {
+  const session = requireRecord(value)
+  const mode = requireString(session.mode)
+
+  if (mode === 'access') {
+    return {
+      mode,
+      email: requireString(session.email),
+    }
+  }
+
+  if (mode === 'local') {
+    return {
+      mode,
+      email: '',
+    }
+  }
+
+  throw new Error('unexpected response')
+}
+
 export function createAdminApi(requester = requestJSON) {
   return {
+    async getSession() {
+      return toAdminSession(
+        await requester('/api/v1/session'),
+      )
+    },
+
     async getHealth() {
       return toHealth(await requester('/health'))
     },

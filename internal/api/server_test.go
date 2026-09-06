@@ -301,3 +301,37 @@ func (provisioner *fakeProvisioner) ProvisionDatabase(_ context.Context, display
 	}
 	return provisioner.database, nil
 }
+
+func TestSessionWithoutAccessContextIsLocal(
+	t *testing.T,
+) {
+	server, _ := testServer(t)
+
+	response := request(
+		t,
+		server,
+		http.MethodGet,
+		"/api/v1/session",
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf(
+			"status = %d, body = %s",
+			response.Code,
+			response.Body.String(),
+		)
+	}
+
+	var body sessionResponse
+	if err := json.Unmarshal(
+		response.Body.Bytes(),
+		&body,
+	); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if body.Mode != "local" ||
+		body.Email != "" {
+		t.Fatalf("body = %#v", body)
+	}
+}

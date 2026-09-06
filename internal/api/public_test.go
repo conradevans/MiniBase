@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -92,6 +93,7 @@ func TestPublicHandlerRejectsAdminWithoutAccessToken(
 	for _, path := range []string{
 		"/admin",
 		"/api/v1/status",
+		"/api/v1/session",
 		"/api/v1/databases",
 		"/api/v1/backups",
 	} {
@@ -254,5 +256,46 @@ func TestPublicHandlerAllowsOnlyExplicitPublicFrontendSurface(
 				http.StatusNotFound,
 			)
 		}
+	}
+}
+
+func TestPublicHandlerExposesValidatedAccessSession(
+	t *testing.T,
+) {
+	server, _ := testServer(t)
+	handler := PublicHandler(
+		server,
+		fakePublicAccessValidator{},
+	)
+
+	response := publicRequest(
+		t,
+		handler,
+		"/api/v1/session",
+		"accepted-token",
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf(
+			"status = %d, body = %s",
+			response.Code,
+			response.Body.String(),
+		)
+	}
+
+	var body sessionResponse
+	if err := json.Unmarshal(
+		response.Body.Bytes(),
+		&body,
+	); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if body.Mode != "access" ||
+		body.Email != "admin@example.com" {
+		t.Fatalf(
+			"body = %#v",
+			body,
+		)
 	}
 }

@@ -33,6 +33,10 @@ const baseBackup = {
 
 function makeAdminApi(overrides = {}) {
   return {
+    getSession: vi.fn().mockResolvedValue({
+      mode: 'access',
+      email: 'admin@example.com',
+    }),
     getHealth: vi.fn().mockResolvedValue({
       status: 'ok',
       metadataDatabase: 'reachable',
@@ -580,5 +584,39 @@ describe('MiniBase dashboard', () => {
     ).toBeTruthy()
     expect(screen.getByText('MiniBase request failed with HTTP 404.')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Back to databases' })).toBeTruthy()
+  })
+})
+
+
+describe('MiniBase administrator identity', () => {
+  test('shows the validated Cloudflare Access identity', async () => {
+    renderApp('/admin')
+
+    expect(
+      await screen.findByText('admin@example.com'),
+    ).toBeTruthy()
+
+    expect(
+      screen.getByText('ACCESS SESSION'),
+    ).toBeTruthy()
+  })
+
+  test('shows local access on the private control plane', async () => {
+    const adminApi = makeAdminApi({
+      getSession: vi.fn().mockResolvedValue({
+        mode: 'local',
+        email: '',
+      }),
+    })
+
+    renderApp('/admin', { adminApi })
+
+    expect(
+      await screen.findByText('Local administrator'),
+    ).toBeTruthy()
+
+    expect(
+      screen.getByText('LOCAL ACCESS'),
+    ).toBeTruthy()
   })
 })

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/conradevans/MiniBase/internal/accessauth"
 	"github.com/conradevans/MiniBase/internal/metadata"
 	"github.com/conradevans/MiniBase/internal/provisioning"
 )
@@ -37,6 +38,11 @@ type statusResponse struct {
 	APIVersion       string `json:"apiVersion"`
 	MetadataDatabase string `json:"metadataDatabase"`
 	SchemaVersion    int    `json:"schemaVersion"`
+}
+
+type sessionResponse struct {
+	Mode  string `json:"mode"`
+	Email string `json:"email,omitempty"`
 }
 
 type guestStatusResponse struct {
@@ -70,6 +76,8 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 		s.requireGet(response, request, s.handleHealth)
 	case request.URL.Path == "/api/v1/status":
 		s.requireGet(response, request, s.handleStatus)
+	case request.URL.Path == "/api/v1/session":
+		s.requireGet(response, request, s.handleSession)
 	case request.URL.Path == "/api/v1/guest/status":
 		s.requireGet(response, request, s.handleGuestStatus)
 	case request.URL.Path == "/api/v1/guest/databases":
@@ -142,6 +150,35 @@ func (s *Server) handleStatus(response http.ResponseWriter, request *http.Reques
 		MetadataDatabase: "reachable",
 		SchemaVersion:    schemaVersion,
 	})
+}
+
+func (s *Server) handleSession(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	identity, ok := accessauth.IdentityFromContext(
+		request.Context(),
+	)
+
+	if !ok {
+		writeJSON(
+			response,
+			http.StatusOK,
+			sessionResponse{
+				Mode: "local",
+			},
+		)
+		return
+	}
+
+	writeJSON(
+		response,
+		http.StatusOK,
+		sessionResponse{
+			Mode:  "access",
+			Email: identity.Email,
+		},
+	)
 }
 
 func (s *Server) handleListDatabases(response http.ResponseWriter, request *http.Request) {

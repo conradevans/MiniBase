@@ -198,3 +198,42 @@ describe('admin API', () => {
     )
   })
 })
+
+
+describe('admin session API', () => {
+  test('uses the administrator session endpoint', async () => {
+    const requester = vi.fn().mockResolvedValue({
+      mode: 'access',
+      email: 'admin@example.com',
+      ignored: 'must-not-survive',
+    })
+
+    const api = createAdminApi(requester)
+
+    await expect(api.getSession()).resolves.toEqual({
+      mode: 'access',
+      email: 'admin@example.com',
+    })
+
+    expect(requester).toHaveBeenCalledWith(
+      '/api/v1/session',
+    )
+  })
+
+  test('supports local private-control-plane sessions', async () => {
+    const requester = vi.fn().mockResolvedValue({
+      mode: 'local',
+    })
+
+    const api = createAdminApi(requester)
+
+    await expect(api.getSession()).resolves.toEqual({
+      mode: 'local',
+      email: '',
+    })
+
+    expect(requester).toHaveBeenCalledWith(
+      '/api/v1/session',
+    )
+  })
+})

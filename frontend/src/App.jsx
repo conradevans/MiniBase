@@ -46,25 +46,25 @@ export default function App({
       return <GuestPage api={guestApi} navigate={navigate} />
     case 'overview':
       return (
-        <AdminShell active="overview" navigate={navigate}>
+        <AdminShell active="overview" navigate={navigate} api={adminApi}>
           <OverviewPage api={adminApi} navigate={navigate} />
         </AdminShell>
       )
     case 'databases':
       return (
-        <AdminShell active="databases" navigate={navigate}>
+        <AdminShell active="databases" navigate={navigate} api={adminApi}>
           <DatabasesPage api={adminApi} navigate={navigate} />
         </AdminShell>
       )
     case 'backups':
       return (
-        <AdminShell active="backups" navigate={navigate}>
+        <AdminShell active="backups" navigate={navigate} api={adminApi}>
           <BackupsPage api={adminApi} navigate={navigate} />
         </AdminShell>
       )
     case 'database-detail':
       return (
-        <AdminShell active="databases" navigate={navigate}>
+        <AdminShell active="databases" navigate={navigate} api={adminApi}>
           <DatabaseDetailPage
             api={adminApi}
             databaseID={route.databaseID}
