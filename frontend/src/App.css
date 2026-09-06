@@ -1394,3 +1394,126 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+.activity-list {
+  overflow: hidden;
+  border: 1px solid #252a32;
+  border-radius: 13px;
+  background: #12151a;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) 150px;
+  gap: 16px;
+  align-items: start;
+  padding: 18px;
+}
+
+.activity-row + .activity-row {
+  border-top: 1px solid #252a32;
+}
+
+.activity-indicator {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #7d8591;
+}
+
+.activity-indicator.activity-success {
+  background: #5ee08a;
+}
+
+.activity-indicator.activity-failure {
+  background: #fb7185;
+}
+
+.activity-indicator.activity-blocked {
+  background: #f6c768;
+}
+
+.activity-main {
+  min-width: 0;
+}
+
+.activity-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.activity-title strong {
+  font-size: 13px;
+}
+
+.activity-main p {
+  margin: 7px 0 0;
+  color: #8c95a1;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.activity-outcome {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #1b2027;
+  color: #aeb5bf;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+.activity-outcome.activity-success {
+  background: #12321f;
+  color: #86efac;
+}
+
+.activity-outcome.activity-failure {
+  background: #3a1719;
+  color: #fda4af;
+}
+
+.activity-outcome.activity-blocked {
+  background: #342a16;
+  color: #f7d584;
+}
+
+.activity-database {
+  display: inline-block;
+  margin-top: 9px;
+  color: #aeb7c3;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.activity-meta {
+  display: grid;
+  gap: 5px;
+  justify-items: end;
+  color: #707986;
+  text-align: right;
+  font-size: 10px;
+}
+
+.activity-meta strong {
+  color: #aab1bb;
+  font-size: 9px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .activity-row {
+    grid-template-columns: 9px minmax(0, 1fr);
+  }
+
+  .activity-meta {
+    grid-column: 2;
+    justify-items: start;
+    text-align: left;
+  }
+}

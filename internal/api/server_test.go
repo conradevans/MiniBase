@@ -335,3 +335,171 @@ func TestSessionWithoutAccessContextIsLocal(
 		t.Fatalf("body = %#v", body)
 	}
 }
+
+func TestActivityEndpoints(t *testing.T) {
+	server, store := testServer(t)
+	ctx := context.Background()
+
+	database, err := store.CreateDatabaseMetadata(
+		ctx,
+		"Activity Database",
+	)
+	if err != nil {
+		t.Fatalf(
+			"CreateDatabaseMetadata() error = %v",
+			err,
+		)
+	}
+
+	_, err = store.CreateActivity(
+		ctx,
+		metadata.ActivityEventInput{
+			DatabaseID:          database.ID,
+			DatabaseDisplayName: database.DisplayName,
+			Type:                metadata.ActivityDatabaseCreate,
+			Outcome:             metadata.ActivitySuccess,
+			Source:              metadata.ActivitySourceAdmin,
+			Detail:              "Database created successfully.",
+		},
+	)
+	if err != nil {
+		t.Fatalf(
+			"CreateActivity() error = %v",
+			err,
+		)
+	}
+
+	global := request(
+		t,
+		server,
+		http.MethodGet,
+		"/api/v1/activity",
+	)
+
+	if global.Code != http.StatusOK {
+		t.Fatalf(
+			"global activity status = %d, body = %s",
+			global.Code,
+			global.Body.String(),
+		)
+	}
+
+	var globalEvents []metadata.ActivityEvent
+	if err := json.Unmarshal(
+		global.Body.Bytes(),
+		&globalEvents,
+	); err != nil {
+		t.Fatalf(
+			"decode global activity: %v",
+			err,
+		)
+	}
+
+	if len(globalEvents) != 1 ||
+		globalEvents[0].DatabaseID != database.ID {
+		t.Fatalf(
+			"global activity = %#v",
+			globalEvents,
+		)
+	}
+
+	databaseResponse := request(
+		t,
+		server,
+		http.MethodGet,
+		"/api/v1/databases/"+database.ID+"/activity",
+	)
+
+	if databaseResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"database activity status = %d, body = %s",
+			databaseResponse.Code,
+			databaseResponse.Body.String(),
+		)
+	}
+
+	var databaseEvents []metadata.ActivityEvent
+	if err := json.Unmarshal(
+		databaseResponse.Body.Bytes(),
+		&databaseEvents,
+	); err != nil {
+		t.Fatalf(
+			"decode database activity: %v",
+			err,
+		)
+	}
+
+	if len(databaseEvents) != 1 ||
+		databaseEvents[0].Detail !=
+			"Database created successfully." {
+		t.Fatalf(
+			"database activity = %#v",
+			databaseEvents,
+		)
+	}
+
+	assertSafeResponse(
+		t,
+		databaseResponse.Body.String(),
+	)
+}
+
+func TestCreateDatabaseRecordsActivity(t *testing.T) {
+	server, store := testServer(t)
+
+	provisioner := &fakeProvisioner{
+		database: metadata.Database{
+			ID:           "database_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			DisplayName:  "Logged Database",
+			InternalName: "mb_db_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			RoleName:     "mb_role_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			Status:       metadata.StatusReady,
+		},
+	}
+
+	server.provisioner = provisioner
+
+	response := jsonRequest(
+		t,
+		server,
+		`{"displayName":"Logged Database"}`,
+	)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf(
+			"status = %d, body = %s",
+			response.Code,
+			response.Body.String(),
+		)
+	}
+
+	events, err := store.ListActivity(
+		context.Background(),
+		100,
+	)
+	if err != nil {
+		t.Fatalf(
+			"ListActivity() error = %v",
+			err,
+		)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf(
+			"activity count = %d, want 1",
+			len(events),
+		)
+	}
+
+	event := events[0]
+
+	if event.DatabaseID != provisioner.database.ID ||
+		event.Type != metadata.ActivityDatabaseCreate ||
+		event.Outcome != metadata.ActivitySuccess ||
+		event.Source != metadata.ActivitySourceAdmin {
+		t.Fatalf(
+			"activity event = %#v",
+			event,
+		)
+	}
+}

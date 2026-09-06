@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { adminApi as defaultAdminApi } from './api/admin'
 import { guestApi as defaultGuestApi } from './api/guest'
+import ActivityPage from './components/ActivityPage'
 import AdminShell from './components/AdminShell'
 import BackupsPage from './components/BackupsPage'
 import DatabaseDetailPage from './components/DatabaseDetailPage'
@@ -60,6 +61,12 @@ export default function App({
       return (
         <AdminShell active="backups" navigate={navigate} api={adminApi}>
           <BackupsPage api={adminApi} navigate={navigate} />
+        </AdminShell>
+      )
+    case 'activity':
+      return (
+        <AdminShell active="activity" navigate={navigate} api={adminApi}>
+          <ActivityPage api={adminApi} />
         </AdminShell>
       )
     case 'database-detail':

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const CurrentSchemaVersion = 4
+const CurrentSchemaVersion = 5
 
 type migration struct {
 	version    int
@@ -125,6 +125,55 @@ var migrations = []migration{
 				UNIQUE (database_id)
 			)`,
 			`CREATE INDEX attachments_database_id ON attachments(database_id)`,
+		},
+	},
+	{
+		version: 5,
+		statements: []string{
+			`CREATE TABLE activity_events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				database_id TEXT,
+				database_display_name TEXT,
+				event_type TEXT NOT NULL
+					CHECK (event_type IN (
+						'database_create',
+						'database_delete',
+						'backup_create',
+						'backup_restore_new',
+						'backup_restore_replace',
+						'attachment_attach',
+						'attachment_detach',
+						'automatic_backup',
+						'retention_prune'
+					)),
+				outcome TEXT NOT NULL
+					CHECK (outcome IN ('success', 'failure', 'blocked')),
+				source TEXT NOT NULL
+					CHECK (source IN ('admin', 'minideploy', 'system')),
+				detail TEXT NOT NULL
+					CHECK (length(detail) BETWEEN 1 AND 500),
+				created_at TEXT NOT NULL,
+				CHECK (
+					(
+						database_id IS NULL
+						AND database_display_name IS NULL
+					)
+					OR (
+						database_id IS NOT NULL
+						AND database_display_name IS NOT NULL
+						AND length(database_id) = 41
+						AND substr(database_id, 1, 9) = 'database_'
+						AND database_id = lower(database_id)
+						AND database_id NOT GLOB '*[^a-z0-9_]*'
+						AND length(database_display_name) BETWEEN 1 AND 200
+						AND database_display_name = trim(database_display_name)
+					)
+				)
+			)`,
+			`CREATE INDEX activity_events_created
+				ON activity_events(created_at DESC, id DESC)`,
+			`CREATE INDEX activity_events_database_created
+				ON activity_events(database_id, created_at DESC, id DESC)`,
 		},
 	},
 }

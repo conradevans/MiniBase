@@ -23,7 +23,7 @@ func TestStaticFrontendServingAndSPAFallback(t *testing.T) {
 		"/admin/",
 		"/admin/databases",
 		"/admin/databases/",
-		"/admin/backups",
+		"/admin/backups", "/admin/activity",
 		"/admin/backups/",
 		"/admin/databases/database_0123456789abcdef0123456789abcdef",
 	} {

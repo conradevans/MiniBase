@@ -53,6 +53,66 @@ export function toMiniDeployDeployment(value) {
   }
 }
 
+const activityTypes = new Set([
+  'database_create',
+  'database_delete',
+  'backup_create',
+  'backup_restore_new',
+  'backup_restore_replace',
+  'attachment_attach',
+  'attachment_detach',
+  'automatic_backup',
+  'retention_prune',
+])
+
+const activityOutcomes = new Set([
+  'success',
+  'failure',
+  'blocked',
+])
+
+const activitySources = new Set([
+  'admin',
+  'minideploy',
+  'system',
+])
+
+function requireActivityValue(value, allowed) {
+  const result = requireString(value)
+  if (!allowed.has(result)) {
+    throw new Error('unexpected response')
+  }
+  return result
+}
+
+export function toAdminActivityEvent(value) {
+  const event = requireRecord(value)
+
+  return {
+    databaseId: event.databaseId === undefined
+      ? ''
+      : requireString(event.databaseId),
+    databaseDisplayName:
+      event.databaseDisplayName === undefined
+        ? ''
+        : requireString(event.databaseDisplayName),
+    type: requireActivityValue(
+      event.type,
+      activityTypes,
+    ),
+    outcome: requireActivityValue(
+      event.outcome,
+      activityOutcomes,
+    ),
+    source: requireActivityValue(
+      event.source,
+      activitySources,
+    ),
+    detail: requireString(event.detail),
+    createdAt: requireString(event.createdAt),
+  }
+}
+
 export function toAdminBackup(value) {
   const backup = requireRecord(value)
   return {
@@ -189,6 +249,24 @@ export function createAdminApi(requester = requestJSON) {
           },
         ),
       )
+    },
+
+    async getActivity() {
+      const result = await requester('/api/v1/activity')
+      if (!Array.isArray(result)) {
+        throw new Error('invalid activity list')
+      }
+      return result.map(toAdminActivityEvent)
+    },
+
+    async getDatabaseActivity(id) {
+      const result = await requester(
+        `/api/v1/databases/${encodeURIComponent(id)}/activity`,
+      )
+      if (!Array.isArray(result)) {
+        throw new Error('invalid activity list')
+      }
+      return result.map(toAdminActivityEvent)
     },
 
     async getBackups() {

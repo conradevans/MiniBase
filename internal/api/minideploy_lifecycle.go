@@ -102,10 +102,11 @@ func (s *Server) handleDetachDatabase(
 		return
 	}
 
-	if _, err := s.store.GetDatabase(
+	database, err := s.store.GetDatabase(
 		request.Context(),
 		databaseID,
-	); errors.Is(err, metadata.ErrNotFound) {
+	)
+	if errors.Is(err, metadata.ErrNotFound) {
 
 		writeError(
 			response,
@@ -140,6 +141,14 @@ func (s *Server) handleDetachDatabase(
 	}
 
 	if len(attachments) != 1 {
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentDetach,
+			metadata.ActivityBlocked,
+			metadata.ActivitySourceAdmin,
+			"Detach blocked because the database does not have one detachable attachment.",
+		)
 		writeError(
 			response,
 			http.StatusConflict,
@@ -171,6 +180,14 @@ func (s *Server) handleDetachDatabase(
 		databaseID,
 		attachment.ID,
 	); err != nil {
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentDetach,
+			metadata.ActivityFailure,
+			metadata.ActivitySourceAdmin,
+			"Detach from MiniDeploy failed.",
+		)
 		s.writeMiniDeployLifecycleError(
 			response,
 			err,
@@ -184,6 +201,14 @@ func (s *Server) handleDetachDatabase(
 			databaseID,
 		)
 	if err != nil || len(remaining) != 0 {
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentDetach,
+			metadata.ActivityFailure,
+			metadata.ActivitySourceAdmin,
+			"Detach completed but attachment state could not be verified.",
+		)
 		s.logger.Error(
 			"database detach completed with inconsistent attachment metadata",
 			"database_id",
@@ -198,6 +223,16 @@ func (s *Server) handleDetachDatabase(
 		)
 		return
 	}
+
+	s.recordDatabaseActivity(
+		request.Context(),
+		database,
+		metadata.ActivityAttachmentDetach,
+		metadata.ActivitySuccess,
+		metadata.ActivitySourceAdmin,
+		"Detached from MiniDeploy application "+
+			attachment.ConsumerRef+".",
+	)
 
 	s.handleGetDatabase(
 		response,
@@ -282,6 +317,14 @@ func (s *Server) handleAttachDatabase(
 	}
 
 	if len(existing) != 0 {
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentAttach,
+			metadata.ActivityBlocked,
+			metadata.ActivitySourceAdmin,
+			"Attachment blocked because the database is already attached.",
+		)
 		writeError(
 			response,
 			http.StatusConflict,
@@ -386,6 +429,14 @@ func (s *Server) handleAttachDatabase(
 	}
 
 	if selected == nil {
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentAttach,
+			metadata.ActivityBlocked,
+			metadata.ActivitySourceAdmin,
+			"Attachment blocked because the deployment was not found.",
+		)
 		writeError(
 			response,
 			http.StatusNotFound,
@@ -396,6 +447,14 @@ func (s *Server) handleAttachDatabase(
 	}
 
 	if !selected.Supported {
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentAttach,
+			metadata.ActivityBlocked,
+			metadata.ActivitySourceAdmin,
+			"Attachment blocked because the deployment does not support MiniBase.",
+		)
 		writeError(
 			response,
 			http.StatusConflict,
@@ -406,6 +465,14 @@ func (s *Server) handleAttachDatabase(
 	}
 
 	if selected.DatabaseAttached {
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentAttach,
+			metadata.ActivityBlocked,
+			metadata.ActivitySourceAdmin,
+			"Attachment blocked because the deployment already has a database.",
+		)
 		writeError(
 			response,
 			http.StatusConflict,
@@ -417,6 +484,15 @@ func (s *Server) handleAttachDatabase(
 
 	if !selected.DatabaseDetached &&
 		selected.Status != "running" {
+
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentAttach,
+			metadata.ActivityBlocked,
+			metadata.ActivitySourceAdmin,
+			"Attachment blocked because the deployment is unavailable.",
+		)
 
 		writeError(
 			response,
@@ -432,6 +508,14 @@ func (s *Server) handleAttachDatabase(
 		input.App,
 		databaseID,
 	); err != nil {
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentAttach,
+			metadata.ActivityFailure,
+			metadata.ActivitySourceAdmin,
+			"Attach to MiniDeploy failed.",
+		)
 		s.writeMiniDeployLifecycleError(
 			response,
 			err,
@@ -452,6 +536,15 @@ func (s *Server) handleAttachDatabase(
 			metadata.BindingNamePrimary ||
 		attached[0].ConsumerRef != input.App {
 
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityAttachmentAttach,
+			metadata.ActivityFailure,
+			metadata.ActivitySourceAdmin,
+			"Attach completed but attachment state could not be verified.",
+		)
+
 		s.logger.Error(
 			"database attach completed with inconsistent attachment metadata",
 			"database_id",
@@ -466,6 +559,16 @@ func (s *Server) handleAttachDatabase(
 		)
 		return
 	}
+
+	s.recordDatabaseActivity(
+		request.Context(),
+		database,
+		metadata.ActivityAttachmentAttach,
+		metadata.ActivitySuccess,
+		metadata.ActivitySourceAdmin,
+		"Attached to MiniDeploy application "+
+			input.App+".",
+	)
 
 	s.handleGetDatabase(
 		response,

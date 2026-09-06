@@ -87,7 +87,7 @@ func TestAttachmentValidationAndReadyRequirement(t *testing.T) {
 	}
 }
 
-func TestSchemaV3ToV4PreservesDatabaseAndBackupMetadata(t *testing.T) {
+func TestSchemaV3ToCurrentPreservesDatabaseAndBackupMetadata(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "minibase.db")
 	store, err := Open(ctx, path)
@@ -102,10 +102,22 @@ func TestSchemaV3ToV4PreservesDatabaseAndBackupMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.ExecContext(ctx, "DROP TABLE attachments"); err != nil {
+	if _, err := store.db.ExecContext(
+		ctx,
+		"DROP TABLE activity_events",
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.ExecContext(ctx, "DELETE FROM schema_migrations WHERE version=4"); err != nil {
+	if _, err := store.db.ExecContext(
+		ctx,
+		"DROP TABLE attachments",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(
+		ctx,
+		"DELETE FROM schema_migrations WHERE version >= 4",
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -116,8 +128,15 @@ func TestSchemaV3ToV4PreservesDatabaseAndBackupMetadata(t *testing.T) {
 		t.Fatalf("v3 to v4 Open() error = %v", err)
 	}
 	defer reopened.Close()
-	if version, err := reopened.SchemaVersion(ctx); err != nil || version != 4 {
-		t.Fatalf("schema version = %d, %v", version, err)
+	if version, err := reopened.SchemaVersion(ctx); err != nil ||
+		version != CurrentSchemaVersion {
+
+		t.Fatalf(
+			"schema version = %d, want %d, error = %v",
+			version,
+			CurrentSchemaVersion,
+			err,
+		)
 	}
 	if got, err := reopened.GetDatabase(ctx, database.ID); err != nil || got.ID != database.ID {
 		t.Fatalf("preserved database = %#v, %v", got, err)

@@ -92,6 +92,12 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 			response.Header().Set("Allow", "GET, POST")
 			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		}
+	case request.URL.Path == "/api/v1/activity":
+		s.requireGet(
+			response,
+			request,
+			s.handleListActivity,
+		)
 	case request.URL.Path == "/api/v1/deployments":
 		s.requireGet(
 			response,
@@ -281,10 +287,29 @@ func (s *Server) handleCreateDatabase(response http.ResponseWriter, request *htt
 		return
 	}
 	if err != nil {
+		s.recordActivity(
+			request.Context(),
+			metadata.ActivityEventInput{
+				Type:    metadata.ActivityDatabaseCreate,
+				Outcome: metadata.ActivityFailure,
+				Source:  metadata.ActivitySourceAdmin,
+				Detail:  "Database creation failed.",
+			},
+		)
 		s.logger.Error("database provisioning failed")
 		writeError(response, http.StatusInternalServerError, "provisioning_failed", "database provisioning failed")
 		return
 	}
+
+	s.recordDatabaseActivity(
+		request.Context(),
+		database,
+		metadata.ActivityDatabaseCreate,
+		metadata.ActivitySuccess,
+		metadata.ActivitySourceAdmin,
+		"Database created successfully.",
+	)
+
 	writeJSON(response, http.StatusCreated, database)
 }
 

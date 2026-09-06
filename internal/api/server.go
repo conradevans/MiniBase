@@ -41,6 +41,7 @@ type backupManager interface {
 
 type Server struct {
 	store               metadataReader
+	activity            activityStore
 	attachments         attachmentStore
 	credentials         credentialReader
 	integrationToken    []byte
@@ -61,6 +62,9 @@ func New(store metadataReader, provisioner databaseProvisioner, backupService ba
 		backups:     backupService,
 		frontend:    newFrontendHandler(frontendDirectory),
 		logger:      logger,
+	}
+	if activity, ok := store.(activityStore); ok {
+		server.activity = activity
 	}
 	if attachments, ok := store.(attachmentStore); ok {
 		server.attachments = attachments

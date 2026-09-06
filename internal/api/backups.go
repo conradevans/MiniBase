@@ -124,6 +124,30 @@ func (s *Server) routeDatabaseResource(response http.ResponseWriter, request *ht
 			parts[0],
 		)
 
+	case len(parts) == 2 &&
+		parts[0] != "" &&
+		parts[1] == "activity":
+
+		if request.Method != http.MethodGet {
+			response.Header().Set(
+				"Allow",
+				http.MethodGet,
+			)
+			writeError(
+				response,
+				http.StatusMethodNotAllowed,
+				"method_not_allowed",
+				"method not allowed",
+			)
+			return
+		}
+
+		s.handleListDatabaseActivity(
+			response,
+			request,
+			parts[0],
+		)
+
 	case len(parts) == 2 && parts[0] != "" && parts[1] == "backups":
 		switch request.Method {
 		case http.MethodGet:
@@ -148,17 +172,66 @@ func (s *Server) handleDeleteDatabase(response http.ResponseWriter, request *htt
 		writeError(response, http.StatusConflict, "database_unavailable", "database is not available")
 		return
 	}
+	databaseSnapshot, snapshotErr := s.store.GetDatabase(
+		request.Context(),
+		databaseID,
+	)
+
 	err := s.backups.DeleteDatabase(request.Context(), databaseID)
 	switch {
 	case err == nil:
+		if snapshotErr == nil {
+			s.recordDatabaseActivity(
+				request.Context(),
+				databaseSnapshot,
+				metadata.ActivityDatabaseDelete,
+				metadata.ActivitySuccess,
+				metadata.ActivitySourceAdmin,
+				"Database deleted successfully.",
+			)
+		} else {
+			s.recordActivity(
+				request.Context(),
+				metadata.ActivityEventInput{
+					Type:    metadata.ActivityDatabaseDelete,
+					Outcome: metadata.ActivitySuccess,
+					Source:  metadata.ActivitySourceAdmin,
+					Detail:  "Database deleted successfully.",
+				},
+			)
+		}
 		response.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, metadata.ErrNotFound), errors.Is(err, metadata.ErrInvalidIdentifier):
 		writeError(response, http.StatusNotFound, "not_found", "database not found")
 	case errors.Is(err, backupservice.ErrDatabaseAttached):
+		s.recordDatabaseActivityByID(
+			request.Context(),
+			databaseID,
+			metadata.ActivityDatabaseDelete,
+			metadata.ActivityBlocked,
+			metadata.ActivitySourceAdmin,
+			"Database deletion blocked because it is attached.",
+		)
 		writeError(response, http.StatusConflict, "database_attached", "database is attached")
 	case errors.Is(err, backupservice.ErrDatabaseUnavailable):
+		s.recordDatabaseActivityByID(
+			request.Context(),
+			databaseID,
+			metadata.ActivityDatabaseDelete,
+			metadata.ActivityBlocked,
+			metadata.ActivitySourceAdmin,
+			"Database deletion blocked because the database is unavailable.",
+		)
 		writeError(response, http.StatusConflict, "database_unavailable", "database is not available")
 	default:
+		s.recordDatabaseActivityByID(
+			request.Context(),
+			databaseID,
+			metadata.ActivityDatabaseDelete,
+			metadata.ActivityFailure,
+			metadata.ActivitySourceAdmin,
+			"Database deletion failed.",
+		)
 		s.logger.Error("database deletion failed", "database_id", databaseID)
 		writeError(response, http.StatusInternalServerError, "deletion_failed", "database deletion failed")
 	}
@@ -237,9 +310,35 @@ func (s *Server) handleCreateBackup(response http.ResponseWriter, request *http.
 	}
 	backup, err := s.backups.CreateBackup(request.Context(), databaseID)
 	if err != nil {
+		outcome := metadata.ActivityFailure
+		if errors.Is(
+			err,
+			backupservice.ErrDatabaseUnavailable,
+		) {
+			outcome = metadata.ActivityBlocked
+		}
+
+		s.recordDatabaseActivityByID(
+			request.Context(),
+			databaseID,
+			metadata.ActivityBackupCreate,
+			outcome,
+			metadata.ActivitySourceAdmin,
+			"Manual backup creation failed.",
+		)
+
 		s.writeBackupError(response, err)
 		return
 	}
+
+	s.recordDatabaseActivityByID(
+		request.Context(),
+		databaseID,
+		metadata.ActivityBackupCreate,
+		metadata.ActivitySuccess,
+		metadata.ActivitySourceAdmin,
+		"Manual backup created successfully.",
+	)
 	result, err := s.backupResponse(request, backup)
 	if err != nil {
 		s.logger.Error("created backup database metadata lookup failed")
@@ -272,9 +371,28 @@ func (s *Server) handleRestoreBackup(response http.ResponseWriter, request *http
 			return
 		}
 		if err != nil {
+			s.recordActivity(
+				request.Context(),
+				metadata.ActivityEventInput{
+					Type:    metadata.ActivityBackupRestoreNew,
+					Outcome: metadata.ActivityFailure,
+					Source:  metadata.ActivitySourceAdmin,
+					Detail:  "Restore as new database failed.",
+				},
+			)
 			s.writeBackupError(response, err)
 			return
 		}
+
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityBackupRestoreNew,
+			metadata.ActivitySuccess,
+			metadata.ActivitySourceAdmin,
+			"Database restored from backup as a new database.",
+		)
+
 		writeJSON(response, http.StatusCreated, database)
 	case "replace":
 		if input.TargetDatabaseID == "" || input.DisplayName != "" {
@@ -283,9 +401,34 @@ func (s *Server) handleRestoreBackup(response http.ResponseWriter, request *http
 		}
 		database, err := s.backups.RestoreInPlace(request.Context(), backupID, input.TargetDatabaseID)
 		if err != nil {
+			outcome := metadata.ActivityFailure
+			if errors.Is(err, backupservice.ErrDatabaseUnavailable) ||
+				errors.Is(err, backupservice.ErrBackupNotReady) {
+				outcome = metadata.ActivityBlocked
+			}
+
+			s.recordDatabaseActivityByID(
+				request.Context(),
+				input.TargetDatabaseID,
+				metadata.ActivityBackupRestoreReplace,
+				outcome,
+				metadata.ActivitySourceAdmin,
+				"Replace-current restore failed.",
+			)
+
 			s.writeBackupError(response, err)
 			return
 		}
+
+		s.recordDatabaseActivity(
+			request.Context(),
+			database,
+			metadata.ActivityBackupRestoreReplace,
+			metadata.ActivitySuccess,
+			metadata.ActivitySourceAdmin,
+			"Database replaced successfully from backup.",
+		)
+
 		writeJSON(response, http.StatusOK, database)
 	default:
 		writeError(response, http.StatusBadRequest, "invalid_request", "mode must be new or replace")

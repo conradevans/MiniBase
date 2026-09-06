@@ -53,6 +53,8 @@ function makeAdminApi(overrides = {}) {
     deleteDatabase: vi.fn().mockResolvedValue(null),
     getBackups: vi.fn().mockResolvedValue([]),
     getDatabaseBackups: vi.fn().mockResolvedValue([]),
+    getActivity: vi.fn().mockResolvedValue([]),
+    getDatabaseActivity: vi.fn().mockResolvedValue([]),
     createBackup: vi.fn().mockResolvedValue({
       id: 'backup_0123456789abcdef0123456789abcdef',
       databaseId: baseDatabase.id,
@@ -170,6 +172,90 @@ describe('MiniBase dashboard', () => {
     expect(await screen.findByText('Unable to load the MiniBase overview.')).toBeTruthy()
     expect(failedView.container.textContent).not.toContain('/srv/minibase')
     expect(failedView.container.textContent).not.toContain('password at')
+  })
+
+  test('renders global Activity history', async () => {
+    const adminApi = makeAdminApi({
+      getActivity: vi.fn().mockResolvedValue([
+        {
+          databaseId: baseDatabase.id,
+          databaseDisplayName: baseDatabase.displayName,
+          type: 'database_create',
+          outcome: 'success',
+          source: 'admin',
+          detail: 'Database created successfully.',
+          createdAt: '2026-09-06T20:00:00Z',
+        },
+      ]),
+    })
+
+    renderApp('/admin/activity', { adminApi })
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Activity',
+      }),
+    ).toBeTruthy()
+
+    expect(
+      await screen.findByText(
+        'Database created successfully.',
+      ),
+    ).toBeTruthy()
+
+    expect(
+      screen.getByText('Scheduler Production'),
+    ).toBeTruthy()
+  })
+
+  test('renders per-database Activity history', async () => {
+    const adminApi = makeAdminApi({
+      getDatabaseActivity: vi.fn().mockResolvedValue([
+        {
+          databaseId: baseDatabase.id,
+          databaseDisplayName: baseDatabase.displayName,
+          type: 'backup_create',
+          outcome: 'success',
+          source: 'admin',
+          detail: 'Manual backup created successfully.',
+          createdAt: '2026-09-06T20:05:00Z',
+        },
+      ]),
+    })
+
+    const view = renderApp(
+      `/admin/databases/${baseDatabase.id}`,
+      { adminApi },
+    )
+
+    await screen.findByRole('heading', {
+      name: 'Scheduler Production',
+    })
+
+    const databaseSections = screen.getByRole(
+      'navigation',
+      { name: 'Database sections' },
+    )
+
+    const activityLink = within(
+      databaseSections,
+    ).getByRole('link', {
+      name: 'Activity',
+    })
+
+    expect(
+      activityLink.getAttribute('href'),
+    ).toBe('#activity')
+
+    expect(
+      view.container.querySelector('#activity'),
+    ).toBeTruthy()
+
+    expect(
+      await screen.findByText(
+        'Manual backup created successfully.',
+      ),
+    ).toBeTruthy()
   })
 
   test('renders database empty, populated, status, and refresh states', async () => {

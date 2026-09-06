@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import {
   createAdminApi,
+  toAdminActivityEvent,
   toAdminBackup,
   toAdminDatabase,
   toMiniDeployDeployment,
@@ -149,6 +150,58 @@ describe('admin API', () => {
       {
         method: 'POST',
       },
+    )
+  })
+
+  test('allowlists activity fields and uses activity endpoints', async () => {
+    const event = {
+      databaseId: database.id,
+      databaseDisplayName: database.displayName,
+      type: 'database_create',
+      outcome: 'success',
+      source: 'admin',
+      detail: 'Database created successfully.',
+      createdAt: '2026-09-06T20:00:00Z',
+      password: 'must-not-survive',
+      credentialPath: '/must-not-survive',
+    }
+
+    expect(
+      Object.keys(toAdminActivityEvent(event)),
+    ).toEqual([
+      'databaseId',
+      'databaseDisplayName',
+      'type',
+      'outcome',
+      'source',
+      'detail',
+      'createdAt',
+    ])
+
+    const requester = vi.fn()
+      .mockResolvedValueOnce([event])
+      .mockResolvedValueOnce([event])
+
+    const api = createAdminApi(requester)
+
+    await expect(api.getActivity()).resolves.toEqual([
+      toAdminActivityEvent(event),
+    ])
+
+    await expect(
+      api.getDatabaseActivity(database.id),
+    ).resolves.toEqual([
+      toAdminActivityEvent(event),
+    ])
+
+    expect(requester).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/activity',
+    )
+
+    expect(requester).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/databases/${database.id}/activity`,
     )
   })
 

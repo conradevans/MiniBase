@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -88,11 +89,69 @@ func run() int {
 	}
 	backupService := backups.NewService(store, archiveStore, backups.NewDockerPostgres(), provisioningService)
 	if cfg.RunDueBackups {
-		result, err := backupService.RunDueAutomaticBackups(context.Background())
+		ctx := context.Background()
+
+		result, err :=
+			backupService.RunDueAutomaticBackups(ctx)
+
 		if err != nil {
+			if _, activityErr := store.CreateActivity(
+				ctx,
+				metadata.ActivityEventInput{
+					Type:    metadata.ActivityAutomaticBackup,
+					Outcome: metadata.ActivityFailure,
+					Source:  metadata.ActivitySourceSystem,
+					Detail:  "Automatic backup run failed.",
+				},
+			); activityErr != nil {
+				logger.Error(
+					"automatic backup activity recording failed",
+				)
+			}
+
 			logger.Error("automatic backup run failed")
 			return 1
 		}
+
+		if result.BackupsCreated > 0 {
+			if _, activityErr := store.CreateActivity(
+				ctx,
+				metadata.ActivityEventInput{
+					Type:    metadata.ActivityAutomaticBackup,
+					Outcome: metadata.ActivitySuccess,
+					Source:  metadata.ActivitySourceSystem,
+					Detail: fmt.Sprintf(
+						"Automatic backup run created %d backup(s) across %d checked database(s).",
+						result.BackupsCreated,
+						result.DatabasesChecked,
+					),
+				},
+			); activityErr != nil {
+				logger.Error(
+					"automatic backup activity recording failed",
+				)
+			}
+		}
+
+		if result.BackupsPruned > 0 {
+			if _, activityErr := store.CreateActivity(
+				ctx,
+				metadata.ActivityEventInput{
+					Type:    metadata.ActivityRetentionPrune,
+					Outcome: metadata.ActivitySuccess,
+					Source:  metadata.ActivitySourceSystem,
+					Detail: fmt.Sprintf(
+						"Backup retention removed %d expired automatic backup(s).",
+						result.BackupsPruned,
+					),
+				},
+			); activityErr != nil {
+				logger.Error(
+					"backup retention activity recording failed",
+				)
+			}
+		}
+
 		logger.Info(
 			"automatic backup run complete",
 			"databases_checked", result.DatabasesChecked,

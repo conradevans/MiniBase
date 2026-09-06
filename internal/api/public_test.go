@@ -94,6 +94,8 @@ func TestPublicHandlerRejectsAdminWithoutAccessToken(
 		"/admin",
 		"/api/v1/status",
 		"/api/v1/session",
+		"/api/v1/activity",
+		"/api/v1/databases/database_00000000000000000000000000000000/activity",
 		"/api/v1/databases",
 		"/api/v1/backups",
 	} {

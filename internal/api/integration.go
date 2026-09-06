@@ -131,10 +131,29 @@ func (s *Server) handleIntegrationCreateDatabase(response http.ResponseWriter, r
 		return
 	}
 	if err != nil {
+		s.recordActivity(
+			request.Context(),
+			metadata.ActivityEventInput{
+				Type:    metadata.ActivityDatabaseCreate,
+				Outcome: metadata.ActivityFailure,
+				Source:  metadata.ActivitySourceMiniDeploy,
+				Detail:  "MiniDeploy database creation failed.",
+			},
+		)
 		s.logger.Error("integration database provisioning failed")
 		writeError(response, http.StatusInternalServerError, "provisioning_failed", "database provisioning failed")
 		return
 	}
+
+	s.recordDatabaseActivity(
+		request.Context(),
+		database,
+		metadata.ActivityDatabaseCreate,
+		metadata.ActivitySuccess,
+		metadata.ActivitySourceMiniDeploy,
+		"Database created for MiniDeploy.",
+	)
+
 	writeJSON(response, http.StatusCreated, integrationDatabaseResponse{
 		ID: database.ID, DisplayName: database.DisplayName, Status: database.Status,
 	})

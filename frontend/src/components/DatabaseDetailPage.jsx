@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toAdminBackup, toAdminDatabase } from '../api/admin'
 import { safeErrorMessage } from '../api/request'
 import { formatTimestamp } from '../utils/format'
+import ActivityList from './ActivityList'
 import AppLink from './AppLink'
 import BackupList from './BackupList'
 import DeleteDatabaseDialog from './DeleteDatabaseDialog'
@@ -13,8 +14,11 @@ import StatusBadge from './StatusBadge'
 export default function DatabaseDetailPage({ api, databaseID, navigate }) {
   const [state, setState] = useState({ loading: true, error: '', database: null })
   const [backups, setBackups] = useState([])
+  const [activity, setActivity] = useState([])
   const [databases, setDatabases] = useState([])
   const [backupLoading, setBackupLoading] = useState(true)
+  const [activityLoading, setActivityLoading] = useState(true)
+  const [activityError, setActivityError] = useState('')
   const [backupPending, setBackupPending] = useState(false)
   const [backupError, setBackupError] = useState('')
   const [backupNotice, setBackupNotice] = useState('')
@@ -67,6 +71,31 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
   useEffect(() => {
     void loadBackups()
   }, [loadBackups])
+
+  const loadActivity = useCallback(async () => {
+    setActivityLoading(true)
+
+    try {
+      const result = await api.getDatabaseActivity(
+        databaseID,
+      )
+      setActivity(result)
+      setActivityError('')
+    } catch (error) {
+      setActivityError(
+        safeErrorMessage(
+          error,
+          'Unable to load database activity.',
+        ),
+      )
+    } finally {
+      setActivityLoading(false)
+    }
+  }, [api, databaseID])
+
+  useEffect(() => {
+    void loadActivity()
+  }, [loadActivity])
 
   useEffect(() => {
     let active = true
@@ -231,7 +260,7 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
         <span className="active">Overview</span>
         <a href="#connection">Connection</a>
         <a href="#backups">Backups</a>
-        <span className="unavailable">Activity · Later</span>
+        <a href="#activity">Activity</a>
         <a href="#settings">Settings</a>
       </nav>
 
@@ -365,12 +394,49 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
         )}
       </section>
 
-      <section className="future-grid">
-        <article>
-          <span>ACTIVITY</span>
-          <strong>Coming later</strong>
-          <p>Provisioning activity history is not available yet.</p>
-        </article>
+      <section
+        className="content-section database-activity"
+        id="activity"
+      >
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">
+              DATABASE HISTORY
+            </p>
+            <h2>Activity</h2>
+          </div>
+
+          <button
+            className="button secondary"
+            type="button"
+            disabled={activityLoading}
+            onClick={loadActivity}
+          >
+            {activityLoading
+              ? 'Refreshing…'
+              : 'Refresh'}
+          </button>
+        </div>
+
+        {activityError ? (
+          <div
+            className="notice error"
+            role="alert"
+          >
+            {activityError}
+          </div>
+        ) : null}
+
+        {activityLoading && activity.length === 0 ? (
+          <div className="empty-state">
+            Loading database activity…
+          </div>
+        ) : (
+          <ActivityList
+            events={activity}
+            emptyMessage="No activity has been recorded for this database yet."
+          />
+        )}
       </section>
 
       <section

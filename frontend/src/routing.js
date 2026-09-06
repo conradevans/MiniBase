@@ -4,6 +4,7 @@ export const routes = {
   admin: '/admin',
   databases: '/admin/databases',
   backups: '/admin/backups',
+  activity: '/admin/activity',
 }
 
 export function databaseDetailPath(id) {
@@ -23,6 +24,8 @@ export function resolveRoute(pathname) {
       return { screen: 'databases' }
     case routes.backups:
       return { screen: 'backups' }
+    case routes.activity:
+      return { screen: 'activity' }
     default:
       break
   }

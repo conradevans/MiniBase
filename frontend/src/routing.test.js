@@ -9,6 +9,7 @@ describe('frontend routing', () => {
     expect(resolveRoute('/admin')).toEqual({ screen: 'overview' })
     expect(resolveRoute('/admin/databases/')).toEqual({ screen: 'databases' })
     expect(resolveRoute('/admin/backups/')).toEqual({ screen: 'backups' })
+    expect(resolveRoute('/admin/activity/')).toEqual({ screen: 'activity' })
     expect(
       resolveRoute('/admin/databases/database_0123456789abcdef0123456789abcdef'),
     ).toEqual({

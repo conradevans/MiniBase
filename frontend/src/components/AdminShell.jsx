@@ -94,12 +94,17 @@ export default function AdminShell({
                 Backups
               </AppLink>
 
-              <span
-                className="nav-item unavailable"
-                aria-disabled="true"
+              <AppLink
+                className={
+                  active === 'activity'
+                    ? 'nav-item active'
+                    : 'nav-item'
+                }
+                href="/admin/activity"
+                navigate={navigate}
               >
-                Activity <small>Later</small>
-              </span>
+                Activity
+              </AppLink>
             </nav>
 
             <p className="sidebar-note">
