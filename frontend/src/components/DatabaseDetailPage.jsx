@@ -229,7 +229,7 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
 
       <nav className="detail-tabs" aria-label="Database sections">
         <span className="active">Overview</span>
-        <span>Connection</span>
+        <a href="#connection">Connection</a>
         <a href="#backups">Backups</a>
         <span className="unavailable">Activity · Later</span>
         <a href="#settings">Settings</a>
@@ -249,7 +249,10 @@ export default function DatabaseDetailPage({ api, databaseID, navigate }) {
           </dl>
         </article>
 
-        <article className="section-card connection-card">
+        <article
+          className="section-card connection-card"
+          id="connection"
+        >
           <p className="eyebrow">CONNECTION</p>
           <h2>Managed securely</h2>
           <p>

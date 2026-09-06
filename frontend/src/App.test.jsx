@@ -282,6 +282,19 @@ describe('MiniBase dashboard', () => {
     expect(await screen.findByRole('heading', { name: 'Scheduler Production' })).toBeTruthy()
     expect(screen.getAllByText(baseDatabase.internalName).length).toBeGreaterThan(0)
     expect(screen.getByText(baseDatabase.id)).toBeTruthy()
+
+    const connectionLink = screen.getByRole('link', {
+      name: 'Connection',
+    })
+
+    expect(
+      connectionLink.getAttribute('href'),
+    ).toBe('#connection')
+
+    expect(
+      view.container.querySelector('#connection'),
+    ).toBeTruthy()
+
     expect(view.container.textContent).not.toContain('mock-secret-must-not-render')
     expect(view.container.textContent).not.toContain('/srv/minibase/secrets')
     expect(view.container.textContent).not.toContain('must-not-render')
