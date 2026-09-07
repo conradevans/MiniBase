@@ -3,6 +3,25 @@
 MiniBase is ReactorLab's database control plane. MiniBase and MiniDeploy are
 separate products and services.
 
+## Current v1 status
+
+MiniBase v1 is ReactorLab's self-hosted PostgreSQL database control plane running on the Dell.
+
+Current production includes PostgreSQL 17, isolated databases and roles, database create/delete, MiniDeploy attach/detach, deletion protection while attached, manual and automatic backups, restore-as-new, replace-current restore, automatic retention, persistent Activity history, a React admin dashboard, restricted Guest routes, Cloudflare Access protection, and systemd-managed startup and backups.
+
+Production listeners:
+
+- `127.0.0.1:9100` — private control plane
+- `127.0.0.1:9103` — public Cloudflare Tunnel origin
+
+SQLite production schema is version 5 at `/srv/minibase/data/minibase.db`.
+
+Automatic backups run daily at 03:00 UTC through `minibase-backup.timer` with `Persistent=true`. Backups remain on the same Dell, so they protect against logical/application errors but not loss of the Dell storage device.
+
+The full v1 lifecycle and a complete Dell reboot/recovery test have both passed.
+
+The sections below document the historical build phases. Statements describing features as future work are historical to those phases and do not override the current v1 status above.
+
 ## Phase 1: PostgreSQL foundation
 
 Phase 1 provides one shared PostgreSQL 17 server in Docker:

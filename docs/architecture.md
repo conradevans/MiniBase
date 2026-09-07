@@ -3,6 +3,27 @@
 MiniBase is ReactorLab's database control plane. MiniDeploy and MiniBase remain
 separate products and services.
 
+## Current v1 architecture
+
+MiniBase v1 runs as a two-listener Go control plane on the Dell:
+
+- `127.0.0.1:9100` — private control plane and MiniDeploy integration
+- `127.0.0.1:9103` — public origin behind Cloudflare Tunnel and Access
+
+PostgreSQL 17 runs in the `minibase-postgres` container on the private `reactorlab-data` Docker network with no published host port.
+
+SQLite metadata is at `/srv/minibase/data/minibase.db` and production is currently on schema version 5. Metadata includes databases, backups, attachments, and Activity events. PostgreSQL passwords, `DATABASE_URL`, Cloudflare credentials, and MiniDeploy secrets are not stored in SQLite.
+
+MiniBase v1 supports database provisioning and deletion, MiniDeploy attach/detach, deletion protection for attached databases, manual backups, daily automatic backups, restore-as-new, replace-current restore, automatic retention, and persistent Activity history.
+
+Administrator traffic is protected by Cloudflare Access at the edge and validated again at the MiniBase public origin. Guest routes remain intentionally limited. The MiniDeploy integration is available only on the private listener.
+
+Production automatic backups run through `minibase-backup.timer` every day at 03:00 UTC with `Persistent=true`.
+
+A full lifecycle acceptance test and Dell reboot/recovery test have passed. Docker, PostgreSQL, MiniBase, MiniDeploy workloads, Caddy, cloudflared, database attachments, Activity history, and the backup timer all recovered successfully.
+
+The sections below preserve earlier phase architecture notes for development history. Statements about future work in those sections describe the system at that earlier phase and do not override the current v1 architecture above.
+
 ## PostgreSQL data plane
 
 Phase 1 runs one shared PostgreSQL 17 server on the Dell. The container is
