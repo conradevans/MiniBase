@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import AppLink from './AppLink'
 import Brand from './Brand'
+import ProductNav from './ProductNav'
 
 export default function AdminShell({
   active,
@@ -34,7 +35,9 @@ export default function AdminShell({
             subtitle="Database control plane"
           />
 
-          <div className="control-plane-state">
+          <div className="header-actions">
+            <ProductNav mode="admin" />
+            <div className="control-plane-state">
             <span
               className="status-dot status-ready"
               aria-hidden="true"
@@ -52,11 +55,16 @@ export default function AdminShell({
                     'Authenticated administrator'}
               </strong>
             </span>
+            </div>
           </div>
         </header>
 
         <div className="admin-grid">
           <aside className="sidebar">
+            <AppLink className="nav-item switch-access" href="/" navigate={navigate}>
+              ← Switch access
+            </AppLink>
+
             <nav aria-label="MiniBase navigation">
               <AppLink
                 className={

@@ -1,5 +1,6 @@
 import AppLink from './AppLink'
 import Brand from './Brand'
+import ProductNav from './ProductNav'
 
 export default function LandingPage({ navigate }) {
   return (
@@ -7,10 +8,13 @@ export default function LandingPage({ navigate }) {
       <div className="site-shell">
         <header className="public-nav">
           <Brand navigate={navigate} subtitle="PostgreSQL control plane" />
-          <span className="local-badge">
-            <span className="status-dot status-ready" aria-hidden="true" />
-            Local control plane
-          </span>
+          <div className="header-actions">
+            <ProductNav mode="root" />
+            <span className="local-badge">
+              <span className="status-dot status-ready" aria-hidden="true" />
+              Access-protected admin
+            </span>
+          </div>
         </header>
 
         <section className="landing-hero">
@@ -62,9 +66,8 @@ export default function LandingPage({ navigate }) {
         <aside className="boundary-note">
           <span aria-hidden="true">i</span>
           <p>
-            Phase 4 is available only through localhost or SSH port forwarding.
-            These route names are not an authentication boundary; do not route
-            MiniBase publicly yet.
+            Guest routes provide a restricted public view. Administrator routes require
+            Cloudflare Access, while private service integration remains loopback-only.
           </p>
         </aside>
 

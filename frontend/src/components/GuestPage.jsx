@@ -4,6 +4,7 @@ import { toGuestDatabase } from '../api/guest'
 import { safeErrorMessage } from '../api/request'
 import AppLink from './AppLink'
 import Brand from './Brand'
+import ProductNav from './ProductNav'
 import StatusBadge from './StatusBadge'
 
 export default function GuestPage({ api, navigate }) {
@@ -38,9 +39,12 @@ export default function GuestPage({ api, navigate }) {
       <div className="site-shell">
         <header className="public-nav">
           <Brand navigate={navigate} subtitle="Read-only database view" />
-          <AppLink className="button secondary" href="/admin" navigate={navigate}>
-            Admin Dashboard
-          </AppLink>
+          <div className="header-actions">
+            <ProductNav mode="guest" />
+            <AppLink className="button secondary" href="/" navigate={navigate}>
+              Switch access
+            </AppLink>
+          </div>
         </header>
 
         <section className="guest-hero">
