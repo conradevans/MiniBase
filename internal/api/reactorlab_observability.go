@@ -26,6 +26,10 @@ type reactorLabBackupReader interface {
 	ListBackups(context.Context) ([]metadata.Backup, error)
 }
 
+type reactorLabAttachmentReader interface {
+	ListAttachments(context.Context) ([]metadata.Attachment, error)
+}
+
 type reactorLabRuntime interface {
 	databaseStats(context.Context) (map[string]reactorLabDatabaseRuntimeStats, error)
 	postgresMetrics(context.Context) (reactorLabPostgresMetrics, error)
@@ -41,6 +45,7 @@ type reactorLabDatabaseMetrics struct {
 	ID                string                  `json:"id"`
 	DisplayName       string                  `json:"displayName"`
 	Status            metadata.DatabaseStatus `json:"status"`
+	Attachments       []reactorLabAttachment  `json:"attachments"`
 	SizeBytes         int64                   `json:"sizeBytes"`
 	Connections       int64                   `json:"connections"`
 	ActiveConnections int64                   `json:"activeConnections"`
@@ -52,6 +57,12 @@ type reactorLabDatabaseMetrics struct {
 	BackupBytes       int64                   `json:"backupBytes"`
 	LatestBackupAt    *time.Time              `json:"latestBackupAt,omitempty"`
 	BackupAgeSeconds  *float64                `json:"backupAgeSeconds,omitempty"`
+}
+
+type reactorLabAttachment struct {
+	ConsumerType string `json:"consumerType"`
+	ConsumerRef  string `json:"consumerRef"`
+	BindingName  string `json:"bindingName"`
 }
 
 type reactorLabTransactions struct {
@@ -112,7 +123,9 @@ func (s *Server) handleReactorLabDatabases(
 	response http.ResponseWriter,
 	request *http.Request,
 ) {
-	if s.reactorLabBackups == nil || s.reactorLabRuntime == nil {
+	if s.reactorLabBackups == nil ||
+		s.attachments == nil ||
+		s.reactorLabRuntime == nil {
 		writeError(
 			response,
 			http.StatusServiceUnavailable,
@@ -126,6 +139,7 @@ func (s *Server) handleReactorLabDatabases(
 		request.Context(),
 		s.store,
 		s.reactorLabBackups,
+		s.attachments,
 		s.reactorLabRuntime,
 		time.Now().UTC(),
 	)
@@ -147,6 +161,7 @@ func collectReactorLabObservability(
 	ctx context.Context,
 	store metadataReader,
 	backups reactorLabBackupReader,
+	attachments reactorLabAttachmentReader,
 	runtime reactorLabRuntime,
 	now time.Time,
 ) (reactorLabObservabilityResponse, error) {
@@ -156,6 +171,11 @@ func collectReactorLabObservability(
 	}
 
 	backupRecords, err := backups.ListBackups(ctx)
+	if err != nil {
+		return reactorLabObservabilityResponse{}, errReactorLabObservability
+	}
+
+	attachmentRecords, err := attachments.ListAttachments(ctx)
 	if err != nil {
 		return reactorLabObservabilityResponse{}, errReactorLabObservability
 	}
@@ -178,16 +198,39 @@ func collectReactorLabObservability(
 		)
 	}
 
+	attachmentsByDatabase := make(map[string][]reactorLabAttachment)
+	for _, attachment := range attachmentRecords {
+		if attachment.ConsumerType != metadata.ConsumerTypeMiniDeploy ||
+			attachment.BindingName != metadata.BindingNamePrimary {
+			continue
+		}
+
+		attachmentsByDatabase[attachment.DatabaseID] = append(
+			attachmentsByDatabase[attachment.DatabaseID],
+			reactorLabAttachment{
+				ConsumerType: attachment.ConsumerType,
+				ConsumerRef:  attachment.ConsumerRef,
+				BindingName:  attachment.BindingName,
+			},
+		)
+	}
+
 	output := make([]reactorLabDatabaseMetrics, 0, len(databases))
 	for _, database := range databases {
 		stats, exists := databaseStats[database.InternalName]
 		if database.Status == metadata.StatusReady && !exists {
 			return reactorLabObservabilityResponse{}, errReactorLabObservability
 		}
+		safeAttachments := attachmentsByDatabase[database.ID]
+		if safeAttachments == nil {
+			safeAttachments = []reactorLabAttachment{}
+		}
+
 		item := reactorLabDatabaseMetrics{
 			ID:                database.ID,
 			DisplayName:       database.DisplayName,
 			Status:            database.Status,
+			Attachments:       safeAttachments,
 			SizeBytes:         stats.SizeBytes,
 			Connections:       stats.Connections,
 			ActiveConnections: stats.ActiveConnections,

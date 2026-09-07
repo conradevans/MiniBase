@@ -62,6 +62,26 @@ func TestReactorLabDatabaseObservabilityIsAllowlisted(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	first, err = store.UpdateDatabaseStatus(
+		ctx,
+		first.ID,
+		metadata.StatusReady,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attachment, err := store.CreateAttachment(
+		ctx,
+		first.ID,
+		metadata.ConsumerTypeMiniDeploy,
+		"myscheduler",
+		metadata.BindingNamePrimary,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	completed := time.Now().UTC().Add(-2 * time.Hour)
 	server.reactorLabBackups = fakeReactorLabBackups{
 		backups: []metadata.Backup{
@@ -144,6 +164,26 @@ func TestReactorLabDatabaseObservabilityIsAllowlisted(t *testing.T) {
 		body.Databases[0].BackupAgeSeconds == nil {
 		t.Fatalf("first database = %#v", body.Databases[0])
 	}
+	if len(body.Databases[0].Attachments) != 1 {
+		t.Fatalf(
+			"first database attachments = %#v",
+			body.Databases[0].Attachments,
+		)
+	}
+	gotAttachment := body.Databases[0].Attachments[0]
+	if gotAttachment.ConsumerType != metadata.ConsumerTypeMiniDeploy ||
+		gotAttachment.ConsumerRef != "myscheduler" ||
+		gotAttachment.BindingName != metadata.BindingNamePrimary {
+		t.Fatalf("attachment = %#v", gotAttachment)
+	}
+	if body.Databases[1].Attachments == nil ||
+		len(body.Databases[1].Attachments) != 0 {
+		t.Fatalf(
+			"second database attachments = %#v",
+			body.Databases[1].Attachments,
+		)
+	}
+
 	if body.Postgres.State != "running" || body.Postgres.PIDs != 7 {
 		t.Fatalf("postgres = %#v", body.Postgres)
 	}
@@ -157,6 +197,8 @@ func TestReactorLabDatabaseObservabilityIsAllowlisted(t *testing.T) {
 		"DATABASE_URL",
 		"password",
 		"credential",
+		attachment.ID,
+		"attachment_",
 	} {
 		if strings.Contains(raw, forbidden) {
 			t.Fatalf("response leaked %q: %s", forbidden, raw)
