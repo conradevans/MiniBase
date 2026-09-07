@@ -72,6 +72,8 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 	switch {
 	case strings.HasPrefix(request.URL.Path, miniDeployIntegrationPrefix):
 		s.routeMiniDeployIntegration(response, request)
+	case request.URL.Path == reactorLabDatabasesPath:
+		s.requireGet(response, request, s.handleReactorLabDatabases)
 	case request.URL.Path == "/health":
 		s.requireGet(response, request, s.handleHealth)
 	case request.URL.Path == "/api/v1/status":

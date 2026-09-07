@@ -30,11 +30,14 @@ func PublicHandler(
 	) {
 		requestPath := request.URL.Path
 
-		// Never expose the MiniDeploy service-to-service integration
-		// surface through the public origin.
+		// Never expose private service-to-service integration or
+		// ReactorLab observability routes through the public origin.
 		if strings.HasPrefix(
 			requestPath,
 			miniDeployIntegrationPrefix,
+		) || strings.HasPrefix(
+			requestPath,
+			"/internal/reactorlab/",
 		) {
 			response.Header().Set(
 				"Cache-Control",

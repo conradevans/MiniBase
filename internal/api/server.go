@@ -50,6 +50,8 @@ type Server struct {
 	logger              *slog.Logger
 	frontend            http.Handler
 	miniDeployLifecycle miniDeployLifecycleClient
+	reactorLabBackups   reactorLabBackupReader
+	reactorLabRuntime   reactorLabRuntime
 }
 
 func New(store metadataReader, provisioner databaseProvisioner, backupService backupManager, frontendDirectory string, logger *slog.Logger) *Server {
@@ -57,11 +59,13 @@ func New(store metadataReader, provisioner databaseProvisioner, backupService ba
 		logger = slog.New(slog.DiscardHandler)
 	}
 	server := &Server{
-		store:       store,
-		provisioner: provisioner,
-		backups:     backupService,
-		frontend:    newFrontendHandler(frontendDirectory),
-		logger:      logger,
+		store:             store,
+		provisioner:       provisioner,
+		backups:           backupService,
+		frontend:          newFrontendHandler(frontendDirectory),
+		logger:            logger,
+		reactorLabBackups: backupService,
+		reactorLabRuntime: commandReactorLabRuntime{},
 	}
 	if activity, ok := store.(activityStore); ok {
 		server.activity = activity
