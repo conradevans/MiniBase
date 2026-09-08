@@ -8,6 +8,7 @@ const destinations = {
     ["ReactorLab", "https://reactorlab.dev/admin"],
     ["MiniDeploy", "https://minideploy.reactorlab.dev/admin/"],
     ["MiniBase", "https://minibase.reactorlab.dev/admin"],
+    ["MiniAI", "https://miniai.reactorlab.dev/admin"],
   ],
   guest: [
     ["ReactorLab", "https://reactorlab.dev/guest"],
