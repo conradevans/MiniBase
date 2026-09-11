@@ -213,6 +213,7 @@ func TestPublicHandlerAllowsOnlyExplicitPublicFrontendSurface(
 		"/",
 		"/guest",
 		"/guest/",
+		"/favicon.svg",
 	} {
 		response := publicRequest(
 			t,

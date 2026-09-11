@@ -103,6 +103,7 @@ func PublicHandler(
 		if requestPath == "/" ||
 			requestPath == "/guest" ||
 			requestPath == "/guest/" ||
+			requestPath == "/favicon.svg" ||
 			strings.HasPrefix(
 				requestPath,
 				"/assets/",
