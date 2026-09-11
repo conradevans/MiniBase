@@ -44,6 +44,14 @@ func TestStaticFrontendServingAndSPAFallback(t *testing.T) {
 		})
 	}
 
+	faviconResponse := request(t, server, http.MethodGet, "/favicon.svg")
+	if faviconResponse.Code != http.StatusOK || !strings.Contains(faviconResponse.Body.String(), "<svg") {
+		t.Fatalf("favicon status = %d, body = %s", faviconResponse.Code, faviconResponse.Body.String())
+	}
+	if !strings.Contains(faviconResponse.Header().Get("Content-Type"), "image/svg+xml") {
+		t.Fatalf("favicon Content-Type = %q", faviconResponse.Header().Get("Content-Type"))
+	}
+
 	assetResponse := request(t, server, http.MethodGet, "/assets/app.js")
 	if assetResponse.Code != http.StatusOK || strings.TrimSpace(assetResponse.Body.String()) != "export const app = 'minibase'" {
 		t.Fatalf("asset status = %d, body = %s", assetResponse.Code, assetResponse.Body.String())
@@ -143,6 +151,9 @@ func testFrontendDirectory(t *testing.T) string {
 	}
 	if err := os.WriteFile(filepath.Join(directory, "index.html"), []byte("<!doctype html><title>"+testFrontendMarker+"</title>"), 0o600); err != nil {
 		t.Fatalf("write index fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "favicon.svg"), []byte("<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"), 0o600); err != nil {
+		t.Fatalf("write favicon fixture: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(directory, "assets", "app.js"), []byte("export const app = 'minibase'"), 0o600); err != nil {
 		t.Fatalf("write asset fixture: %v", err)

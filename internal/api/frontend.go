@@ -28,6 +28,8 @@ func (handler *frontendHandler) ServeHTTP(response http.ResponseWriter, request 
 	switch {
 	case isFrontendRoute(request.URL.Path):
 		handler.serveFile(response, request, "index.html", true)
+	case request.URL.Path == "/favicon.svg":
+		handler.serveFile(response, request, "favicon.svg", false)
 	case strings.HasPrefix(request.URL.Path, "/assets/"):
 		assetName := strings.TrimPrefix(request.URL.Path, "/")
 		if !validAssetName(assetName) {
