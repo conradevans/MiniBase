@@ -94,13 +94,26 @@ describe('MiniBase dashboard', () => {
     renderApp('/')
     expect(
       screen.getByRole('heading', {
-        name: 'Manage PostgreSQL without managing PostgreSQL.',
+        name: 'Managed PostgreSQL for applications running in ReactorLab.',
       }),
     ).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Guest View' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Guest Overview' })).toBeTruthy()
     expect(
-      screen.getByRole('link', { name: 'Open Admin Dashboard' }),
+      screen.getByRole('link', { name: 'Open Administrator' }),
     ).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'AI Integration' })).toBeTruthy()
+    expect(
+      screen.getByText(/Administrator access opens database, backup, and lifecycle controls/),
+    ).toBeTruthy()
+    expect(
+      screen.queryByText(/Administrator access is protected by Cloudflare Access/),
+    ).toBeNull()
+  })
+
+  test('shows the verified administrator session in one header box', async () => {
+    renderApp('/admin')
+    expect(await screen.findByText('admin@example.com')).toBeTruthy()
+    expect(screen.getAllByText('Switch Access')).toHaveLength(1)
   })
 
   test('renders only allowlisted Guest data', async () => {
@@ -694,10 +707,6 @@ describe('MiniBase administrator identity', () => {
     expect(
       await screen.findByText('admin@example.com'),
     ).toBeTruthy()
-
-    expect(
-      screen.getByText('ACCESS SESSION'),
-    ).toBeTruthy()
   })
 
   test('shows local access on the private control plane', async () => {
@@ -711,11 +720,7 @@ describe('MiniBase administrator identity', () => {
     renderApp('/admin', { adminApi })
 
     expect(
-      await screen.findByText('Local administrator'),
-    ).toBeTruthy()
-
-    expect(
-      screen.getByText('LOCAL ACCESS'),
+      await screen.findByText('Administrator'),
     ).toBeTruthy()
   })
 })

@@ -1,8 +1,15 @@
-export default function AppLink({ href, navigate, children, ...props }) {
+export default function AppLink({
+  href,
+  navigate,
+  children,
+  onClick,
+  ...props
+}) {
   return (
     <a
       href={href}
       onClick={(event) => {
+        onClick?.(event)
         if (
           event.defaultPrevented ||
           event.button !== 0 ||

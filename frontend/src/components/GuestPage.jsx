@@ -2,9 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { toGuestDatabase } from '../api/guest'
 import { safeErrorMessage } from '../api/request'
-import AppLink from './AppLink'
-import Brand from './Brand'
-import ProductNav from './ProductNav'
+import GlobalHeader from './GlobalHeader'
 import StatusBadge from './StatusBadge'
 
 export default function GuestPage({ api, navigate }) {
@@ -37,15 +35,11 @@ export default function GuestPage({ api, navigate }) {
   return (
     <main className="guest-page">
       <div className="site-shell">
-        <header className="public-nav">
-          <Brand navigate={navigate} subtitle="Read-only database view" />
-          <div className="header-actions">
-            <ProductNav mode="guest" />
-            <AppLink className="button secondary" href="/" navigate={navigate}>
-              Switch access
-            </AppLink>
-          </div>
-        </header>
+        <GlobalHeader
+          mode="guest"
+          navigate={navigate}
+          sessionLabel="Guest View"
+        />
 
         <section className="guest-hero">
           <div>

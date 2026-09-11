@@ -1,6 +1,6 @@
 import AppLink from './AppLink'
 
-export default function Brand({ navigate, subtitle = 'PostgreSQL control plane' }) {
+export default function Brand({ navigate }) {
   return (
     <AppLink
       aria-label="MiniBase home"
@@ -11,10 +11,7 @@ export default function Brand({ navigate, subtitle = 'PostgreSQL control plane' 
       <span className="brand-mark" aria-hidden="true">
         B
       </span>
-      <span>
-        <strong className="brand-name">MiniBase</strong>
-        <span className="brand-subtitle">ReactorLab · {subtitle}</span>
-      </span>
+      <strong className="brand-name">MiniBase</strong>
     </AppLink>
   )
 }

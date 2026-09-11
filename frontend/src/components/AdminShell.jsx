@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import AppLink from './AppLink'
-import Brand from './Brand'
-import ProductNav from './ProductNav'
+import GlobalHeader from './GlobalHeader'
 
 export default function AdminShell({
   active,
@@ -29,42 +28,18 @@ export default function AdminShell({
   return (
     <main className="admin-page">
       <div className="app-shell">
-        <header className="topbar">
-          <Brand
-            navigate={navigate}
-            subtitle="Database control plane"
-          />
-
-          <div className="header-actions">
-            <ProductNav mode="admin" />
-            <div className="control-plane-state">
-            <span
-              className="status-dot status-ready"
-              aria-hidden="true"
-            />
-            <span>
-              <small>
-                {localSession
-                  ? 'LOCAL ACCESS'
-                  : 'ACCESS SESSION'}
-              </small>
-              <strong>
-                {localSession
-                  ? 'Local administrator'
-                  : session?.email ||
-                    'Authenticated administrator'}
-              </strong>
-            </span>
-            </div>
-          </div>
-        </header>
+        <GlobalHeader
+          mode="admin"
+          navigate={navigate}
+          sessionLabel={
+            localSession || !session?.email
+              ? 'Admin'
+              : 'Admin · ' + session.email
+          }
+        />
 
         <div className="admin-grid">
           <aside className="sidebar">
-            <AppLink className="nav-item switch-access" href="/" navigate={navigate}>
-              ← Switch access
-            </AppLink>
-
             <nav aria-label="MiniBase navigation">
               <AppLink
                 className={

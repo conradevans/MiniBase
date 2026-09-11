@@ -1,73 +1,74 @@
+import AIIntegration from './AIIntegration'
 import AppLink from './AppLink'
-import Brand from './Brand'
-import ProductNav from './ProductNav'
+import GlobalHeader from './GlobalHeader'
 
 export default function LandingPage({ navigate }) {
   return (
     <main className="public-page">
       <div className="site-shell">
-        <header className="public-nav">
-          <Brand navigate={navigate} subtitle="PostgreSQL control plane" />
-          <div className="header-actions">
-            <ProductNav mode="root" />
-            <span className="local-badge">
-              <span className="status-dot status-ready" aria-hidden="true" />
-              Access-protected admin
-            </span>
-          </div>
-        </header>
+        <GlobalHeader mode="root" navigate={navigate} />
 
-        <section className="landing-hero">
+        <section className="landing-hero minibase-access-hero">
           <div className="landing-copy">
-            <p className="eyebrow">REACTORLAB / MINIBASE</p>
-            <h1>Manage PostgreSQL without managing PostgreSQL.</h1>
+            <p className="eyebrow">MINIBASE</p>
+            <h1>Managed PostgreSQL for applications running in ReactorLab.</h1>
             <p className="hero-copy">
-              MiniBase provisions isolated databases and application roles on
-              ReactorLab infrastructure while keeping operational credentials
-              out of the dashboard.
+              MiniBase provisions isolated application databases and roles on
+              the Dell while keeping PostgreSQL private and operational
+              credentials out of the browser.
             </p>
-            <div className="hero-actions">
+
+            <dl className="access-explanation">
+              <div>
+                <dt>What it does</dt>
+                <dd>Provides managed PostgreSQL databases for applications running through ReactorLab.</dd>
+              </div>
+              <div>
+                <dt>How it works</dt>
+                <dd>Provisions isolated databases and roles, integrates with MiniDeploy, and manages backups and database lifecycle operations through its control plane.</dd>
+              </div>
+              <div>
+                <dt>Why it is useful</dt>
+                <dd>Applications get one consistent managed database path instead of separately provisioning, exposing, and maintaining their own database service.</dd>
+              </div>
+            </dl>
+          </div>
+
+          <aside className="principles-card access-card">
+            <p className="eyebrow">CHOOSE ACCESS</p>
+            <h2>Open MiniBase</h2>
+            <p>
+              Administrator access opens database, backup, and lifecycle
+              controls. Guest access provides a restricted, read-only view of
+              database availability.
+            </p>
+            <div className="access-actions">
               <AppLink
                 className="button primary"
                 href="/admin"
                 navigate={navigate}
               >
-                Open Admin Dashboard
+                Open Administrator
               </AppLink>
               <AppLink
                 className="button secondary"
                 href="/guest"
                 navigate={navigate}
               >
-                Guest View
+                Guest Overview
               </AppLink>
             </div>
-          </div>
-
-          <aside className="principles-card">
-            <p className="eyebrow">WHAT MINIBASE MANAGES</p>
-            <ul>
-              <li>
-                <strong>Isolated by default</strong>
-                <span>One dedicated role for every database.</span>
-              </li>
-              <li>
-                <strong>Private infrastructure</strong>
-                <span>PostgreSQL stays on an internal Docker network.</span>
-              </li>
-              <li>
-                <strong>Secret-conscious</strong>
-                <span>Credentials never appear in browser responses.</span>
-              </li>
-            </ul>
           </aside>
         </section>
+
+        <AIIntegration />
 
         <aside className="boundary-note">
           <span aria-hidden="true">i</span>
           <p>
-            Guest routes provide a restricted public view. Administrator routes require
-            Cloudflare Access, while private service integration remains loopback-only.
+            PostgreSQL stays private. MiniDeploy supplies a managed connection
+            only to supported attached applications; credentials are never
+            shown on this page.
           </p>
         </aside>
 
