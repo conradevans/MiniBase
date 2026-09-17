@@ -16,6 +16,7 @@ const baseDatabase = {
   displayName: 'Scheduler Production',
   internalName: 'mb_db_0123456789abcdef0123456789abcdef',
   status: 'ready',
+  guestVisible: false,
   createdAt: '2026-09-01T12:00:00Z',
   updatedAt: '2026-09-01T12:30:00Z',
 }
@@ -51,6 +52,9 @@ function makeAdminApi(overrides = {}) {
     getDatabase: vi.fn().mockResolvedValue(baseDatabase),
     createDatabase: vi.fn().mockResolvedValue(baseDatabase),
     deleteDatabase: vi.fn().mockResolvedValue(null),
+    updateGuestVisibility: vi.fn().mockImplementation((id, guestVisible) => (
+      Promise.resolve({ id, guestVisible })
+    )),
     getBackups: vi.fn().mockResolvedValue([]),
     getDatabaseBackups: vi.fn().mockResolvedValue([]),
     getActivity: vi.fn().mockResolvedValue([]),
@@ -74,7 +78,10 @@ function makeAdminApi(overrides = {}) {
 function makeGuestApi(overrides = {}) {
   return {
     getStatus: vi.fn().mockResolvedValue({ service: 'minibase', status: 'ok' }),
-    getDatabases: vi.fn().mockResolvedValue([]),
+    getDatabases: vi.fn().mockResolvedValue({
+      summary: { total: 0, showing: 0, hidden: 0 },
+      databases: [],
+    }),
     ...overrides,
   }
 }
@@ -118,8 +125,9 @@ describe('MiniBase dashboard', () => {
 
   test('renders only allowlisted Guest data', async () => {
     const guestApi = makeGuestApi({
-      getDatabases: vi.fn().mockResolvedValue([
-        {
+      getDatabases: vi.fn().mockResolvedValue({
+        summary: { total: 3, showing: 1, hidden: 2 },
+        databases: [{
           id: baseDatabase.id,
           displayName: 'Guest-safe Database',
           status: 'ready',
@@ -127,16 +135,118 @@ describe('MiniBase dashboard', () => {
           roleName: 'must-not-render',
           password: 'highly-sensitive-mock-value',
           credentialPath: '/srv/minibase/secrets/must-not-render',
-        },
-      ]),
+        }],
+      }),
     })
     const { container } = renderApp('/guest', { guestApi })
 
     expect(await screen.findByText('Guest-safe Database')).toBeTruthy()
     expect(screen.getByText('Ready')).toBeTruthy()
+    const summary = screen.getByLabelText('Guest database summary')
+    expect(summary.textContent).toContain('TOTAL3')
+    expect(summary.textContent).toContain('SHOWING1')
+    expect(summary.textContent).toContain('HIDDEN2')
     expect(container.textContent).not.toContain('must-not-render')
     expect(container.textContent).not.toContain('highly-sensitive-mock-value')
     expect(container.textContent).not.toContain('/srv/minibase')
+  })
+
+  test('renders the explicit Guest View empty state with aggregate counts', async () => {
+    const guestApi = makeGuestApi({
+      getDatabases: vi.fn().mockResolvedValue({
+        summary: { total: 2, showing: 0, hidden: 2 },
+        databases: [],
+      }),
+    })
+    renderApp('/guest', { guestApi })
+
+    expect(
+      await screen.findByText('No databases are currently shared in Guest View.'),
+    ).toBeTruthy()
+    const summary = screen.getByLabelText('Guest database summary')
+    expect(summary.textContent).toContain('TOTAL2')
+    expect(summary.textContent).toContain('SHOWING0')
+    expect(summary.textContent).toContain('HIDDEN2')
+  })
+
+  test('lists all databases on the dedicated Visibility route', async () => {
+    const adminApi = makeAdminApi({
+      getDatabases: vi.fn().mockResolvedValue([
+        { ...baseDatabase, guestVisible: true },
+        {
+          ...baseDatabase,
+          id: 'database_11111111111111111111111111111111',
+          displayName: 'Private Analytics',
+          guestVisible: false,
+        },
+      ]),
+    })
+    renderApp('/admin/visibility', { adminApi })
+
+    expect(await screen.findByRole('heading', { name: 'Visibility' })).toBeTruthy()
+    expect(screen.getByText('Scheduler Production')).toBeTruthy()
+    expect(screen.getByText('Private Analytics')).toBeTruthy()
+    expect(screen.getByText('Visible in Guest View')).toBeTruthy()
+    expect(screen.getByText('Hidden from Guest View')).toBeTruthy()
+    const summary = screen.getByLabelText('Guest View visibility summary')
+    expect(summary.textContent).toContain('TOTAL2')
+    expect(summary.textContent).toContain('VISIBLE1')
+    expect(summary.textContent).toContain('HIDDEN1')
+    expect(screen.getByRole('link', { name: 'Visibility' }).className).toContain('active')
+  })
+
+  test('optimistically toggles visibility and prevents duplicate submission', async () => {
+    let resolveUpdate
+    const updateGuestVisibility = vi.fn(() => new Promise((resolve) => {
+      resolveUpdate = resolve
+    }))
+    const adminApi = makeAdminApi({
+      getDatabases: vi.fn().mockResolvedValue([baseDatabase]),
+      updateGuestVisibility,
+    })
+    renderApp('/admin/visibility', { adminApi })
+
+    const toggle = await screen.findByRole('switch', {
+      name: 'List Scheduler Production in Guest View',
+    })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(toggle)
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(toggle.disabled).toBe(true)
+    expect(screen.getByText('Saving…')).toBeTruthy()
+    expect(updateGuestVisibility).toHaveBeenCalledTimes(1)
+    expect(updateGuestVisibility).toHaveBeenCalledWith(baseDatabase.id, true)
+
+    await act(async () => {
+      resolveUpdate({ id: baseDatabase.id, guestVisible: true })
+    })
+    await waitFor(() => expect(toggle.disabled).toBe(false))
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText('Visible in Guest View')).toBeTruthy()
+  })
+
+  test('rolls back a failed visibility toggle and shows only a safe error', async () => {
+    const adminApi = makeAdminApi({
+      getDatabases: vi.fn().mockResolvedValue([
+        { ...baseDatabase, guestVisible: true },
+      ]),
+      updateGuestVisibility: vi.fn().mockRejectedValue(
+        new Error('credential at /srv/minibase/private'),
+      ),
+    })
+    const view = renderApp('/admin/visibility', { adminApi })
+
+    const toggle = await screen.findByRole('switch', {
+      name: 'List Scheduler Production in Guest View',
+    })
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    expect(await screen.findByText('Unable to update Guest View visibility.')).toBeTruthy()
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(toggle.disabled).toBe(false)
+    expect(view.container.textContent).not.toContain('/srv/minibase')
+    expect(view.container.textContent).not.toContain('credential at')
   })
 
   test('computes real overview counts', async () => {

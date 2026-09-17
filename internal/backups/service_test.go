@@ -179,6 +179,9 @@ func TestRestoreAsNewLeavesSourceUntouchedAndCleansFailedTarget(t *testing.T) {
 	if restored.ID == sourceBefore.ID || restored.Status != metadata.StatusReady {
 		t.Fatalf("restored database = %#v", restored)
 	}
+	if restored.GuestVisible {
+		t.Fatal("restore-as-new database is guest-visible, want hidden")
+	}
 	if fixture.metadata.databases[serviceDatabaseID] != sourceBefore {
 		t.Fatal("source database metadata changed")
 	}
@@ -210,6 +213,9 @@ func TestRestoreInPlaceSafetyBackupIdentityAndFailureBehavior(t *testing.T) {
 	}
 	if ready.ID != original.ID || ready.RoleName != original.RoleName || ready.InternalName != original.InternalName {
 		t.Fatalf("target identity changed: before=%#v after=%#v", original, ready)
+	}
+	if ready.GuestVisible != original.GuestVisible {
+		t.Fatalf("in-place restore changed visibility: before=%v after=%v", original.GuestVisible, ready.GuestVisible)
 	}
 	if fixture.provisioner.credentialDeleted {
 		t.Fatal("in-place restore changed target credential")
@@ -400,7 +406,7 @@ func newBackupServiceFixture() serviceFixture {
 		databases: map[string]metadata.Database{
 			serviceDatabaseID: {
 				ID: serviceDatabaseID, DisplayName: "Source", InternalName: testDatabaseName,
-				RoleName: testRoleName, Status: metadata.StatusReady,
+				RoleName: testRoleName, Status: metadata.StatusReady, GuestVisible: true,
 			},
 		},
 		backups: make(map[string]metadata.Backup),

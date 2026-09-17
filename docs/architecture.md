@@ -12,9 +12,17 @@ MiniBase v1 runs as a two-listener Go control plane on the Dell:
 
 PostgreSQL 17 runs in the `minibase-postgres` container on the private `reactorlab-data` Docker network with no published host port.
 
-SQLite metadata is at `/srv/minibase/data/minibase.db` and production is currently on schema version 5. Metadata includes databases, backups, attachments, and Activity events. PostgreSQL passwords, `DATABASE_URL`, Cloudflare credentials, and MiniDeploy secrets are not stored in SQLite.
+SQLite metadata is at `/srv/minibase/data/minibase.db`; the current code schema
+is version 6. Metadata includes databases, per-database Guest View visibility,
+backups, attachments, and Activity events. PostgreSQL passwords,
+`DATABASE_URL`, Cloudflare credentials, and MiniDeploy secrets are not stored
+in SQLite. Migration 6 applies on service startup; a running version-5 process
+is not changed until rollout and restart.
 
-MiniBase v1 supports database provisioning and deletion, MiniDeploy attach/detach, deletion protection for attached databases, manual backups, daily automatic backups, restore-as-new, replace-current restore, automatic retention, and persistent Activity history.
+MiniBase v1 supports database provisioning and deletion, per-database Guest
+View visibility, MiniDeploy attach/detach, deletion protection for attached
+databases, manual backups, daily automatic backups, restore-as-new,
+replace-current restore, automatic retention, and persistent Activity history.
 
 Administrator traffic is protected by Cloudflare Access at the edge and validated again at the MiniBase public origin. Guest routes remain intentionally limited. The MiniDeploy integration is available only on the private listener.
 
@@ -100,7 +108,10 @@ GET /api/v1/guest/status
 GET /api/v1/guest/databases
 ```
 
-Guest database objects contain exactly `id`, `displayName`, and `status`.
+The current Guest database endpoint wraps its list in a `summary` and
+`databases` envelope. `summary` contains `total`, `showing`, and `hidden`
+counts. Only guest-visible records are mapped into response objects, and each
+listed object contains exactly `id`, `displayName`, and `status`.
 Administrative routes continue to use the Phase 3 APIs, including the real
 database provisioning endpoint. Browser response adapters also allowlist known
 fields and centralized error handling does not render raw backend details.
@@ -277,7 +288,7 @@ material is read only for an authenticated binding request, is not stored in
 SQLite or attachment metadata, and is not exposed by ordinary Admin or Guest
 APIs. Database detail embeds safe attachment metadata so the local Admin
 dashboard can show consumer application, service, and binding; Guest DTOs stay
-unchanged.
+free of attachment metadata.
 
 Deleting an attachment removes only the relationship. It does not call
 PostgreSQL, remove the application role or credential, delete backups, or alter
@@ -288,6 +299,60 @@ retaining the same database.
 MiniBase remains `127.0.0.1:9100` only. The integration does not add a public
 route, expose PostgreSQL, install systemd/cron/timers, or change the existing
 internal Docker network.
+
+## Per-database Guest View visibility
+
+Schema version 6 adds `databases.guest_visible` as a constrained non-null
+boolean. The migration default is true so every database created before this
+feature retains its legacy Guest View listing. All current creation paths write
+false explicitly: direct Admin provisioning, MiniDeploy integration
+provisioning, and restore-as-new. Replace-current restore operates on the same
+database row and preserves its existing value.
+
+Administrator list and detail responses expose the safe `guestVisible` boolean.
+The dedicated mutation is:
+
+```text
+PATCH /api/v1/databases/{id}/visibility
+Content-Type: application/json
+
+{"guestVisible":true}
+```
+
+The route is part of the Access-protected administrator API. Its decoder is
+bounded and strict, and the store executes a transaction containing only a
+field-level `UPDATE` of `guest_visible` and `updated_at`. It does not invoke
+PostgreSQL, provisioning, attachment, backup, or restore services. SQLite's
+serialized write connection and transactional row updates prevent a stale
+visibility write from overwriting lifecycle status; an update after deletion
+returns not found and cannot recreate the row. Status, backup, and attachment
+metadata operations do not write the visibility column.
+
+The public endpoint remains read-only:
+
+```text
+GET /api/v1/guest/databases
+```
+
+It reads all database metadata to calculate `total`, filters on
+`guest_visible`, then constructs safe DTOs for the remaining rows. Its response
+has this stable shape, including when `databases` is empty:
+
+```json
+{
+  "summary": {"total": 3, "showing": 1, "hidden": 2},
+  "databases": [
+    {"id": "database_<32 lowercase hex>", "displayName": "Shared", "status": "ready"}
+  ]
+}
+```
+
+Hidden resource identities and operational metadata are never serialized.
+Visibility governs discovery only: PostgreSQL stays on the private Docker
+network with no published port, and no credential or connection information is
+added to Guest View. The React administrator route `/admin/visibility` lists
+every database with an accessible switch; `/guest` shows the server-provided
+Total, Showing, and Hidden counts while retaining the existing database cards.
 
 ## Future architecture
 

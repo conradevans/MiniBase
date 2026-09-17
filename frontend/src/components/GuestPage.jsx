@@ -6,21 +6,28 @@ import GlobalHeader from './GlobalHeader'
 import StatusBadge from './StatusBadge'
 
 export default function GuestPage({ api, navigate }) {
-  const [state, setState] = useState({ loading: true, error: '', databases: [] })
+  const [state, setState] = useState({
+    loading: true,
+    error: '',
+    summary: { total: 0, showing: 0, hidden: 0 },
+    databases: [],
+  })
 
   const loadGuestData = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: '' }))
     try {
-      const [, databases] = await Promise.all([api.getStatus(), api.getDatabases()])
+      const [, result] = await Promise.all([api.getStatus(), api.getDatabases()])
       setState({
         loading: false,
         error: '',
-        databases: databases.map(toGuestDatabase),
+        summary: result.summary,
+        databases: result.databases.map(toGuestDatabase),
       })
     } catch (error) {
       setState({
         loading: false,
         error: safeErrorMessage(error, 'Unable to load the Guest view.'),
+        summary: { total: 0, showing: 0, hidden: 0 },
         databases: [],
       })
     }
@@ -29,8 +36,6 @@ export default function GuestPage({ api, navigate }) {
   useEffect(() => {
     void loadGuestData()
   }, [loadGuestData])
-
-  const readyCount = state.databases.filter((database) => database.status === 'ready').length
 
   return (
     <main className="guest-page">
@@ -52,8 +57,9 @@ export default function GuestPage({ api, navigate }) {
             </p>
           </div>
           <div className="guest-summary" aria-label="Guest database summary">
-            <div><span>DATABASES</span><strong>{state.databases.length}</strong></div>
-            <div><span>READY</span><strong>{readyCount}</strong></div>
+            <div><span>TOTAL</span><strong>{state.summary.total}</strong></div>
+            <div><span>SHOWING</span><strong>{state.summary.showing}</strong></div>
+            <div><span>HIDDEN</span><strong>{state.summary.hidden}</strong></div>
           </div>
         </section>
 
@@ -77,7 +83,7 @@ export default function GuestPage({ api, navigate }) {
           {state.loading && state.databases.length === 0 ? (
             <div className="empty-state">Loading Guest View…</div>
           ) : state.databases.length === 0 ? (
-            <div className="empty-state">No databases yet.</div>
+            <div className="empty-state">No databases are currently shared in Guest View.</div>
           ) : (
             <div className="guest-database-grid">
               {state.databases.map((database) => (

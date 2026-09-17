@@ -97,6 +97,9 @@ func TestOrdinaryAPIsExposeSafeAttachmentMetadataOnly(t *testing.T) {
 		t.Fatal("ordinary Admin response omitted the safe attachment ID")
 	}
 	assertExactKeys(t, detail.Attachments[0], "id", "databaseId", "consumerType", "consumerRef", "bindingName", "createdAt", "updatedAt")
+	if _, err := store.UpdateGuestVisibility(context.Background(), database.ID, true); err != nil {
+		t.Fatal(err)
+	}
 
 	guest := integrationRequest(server, http.MethodGet, "/api/v1/guest/databases", "", "")
 	if guest.Code != http.StatusOK {
@@ -105,12 +108,14 @@ func TestOrdinaryAPIsExposeSafeAttachmentMetadataOnly(t *testing.T) {
 	if strings.Contains(guest.Body.String(), "attachment") || strings.Contains(guest.Body.String(), password) {
 		t.Fatal("Guest response exposed attachment or credential data")
 	}
-	var databases []map[string]json.RawMessage
-	if err := json.Unmarshal(guest.Body.Bytes(), &databases); err != nil {
+	var payload struct {
+		Databases []map[string]json.RawMessage `json:"databases"`
+	}
+	if err := json.Unmarshal(guest.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(databases) != 1 {
-		t.Fatalf("guest database count = %d", len(databases))
+	if len(payload.Databases) != 1 {
+		t.Fatalf("guest database count = %d", len(payload.Databases))
 	}
-	assertExactKeys(t, databases[0], "id", "displayName", "status")
+	assertExactKeys(t, payload.Databases[0], "id", "displayName", "status")
 }

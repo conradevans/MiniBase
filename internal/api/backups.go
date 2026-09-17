@@ -158,6 +158,13 @@ func (s *Server) routeDatabaseResource(response http.ResponseWriter, request *ht
 			response.Header().Set("Allow", "GET, POST")
 			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		}
+	case len(parts) == 2 && parts[0] != "" && parts[1] == "visibility":
+		if request.Method != http.MethodPatch {
+			response.Header().Set("Allow", http.MethodPatch)
+			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleUpdateGuestVisibility(response, request, parts[0])
 	default:
 		writeError(response, http.StatusNotFound, "not_found", "resource not found")
 	}

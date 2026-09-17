@@ -8,6 +8,7 @@ describe('frontend routing', () => {
     expect(resolveRoute('/guest/')).toEqual({ screen: 'guest' })
     expect(resolveRoute('/admin')).toEqual({ screen: 'overview' })
     expect(resolveRoute('/admin/databases/')).toEqual({ screen: 'databases' })
+    expect(resolveRoute('/admin/visibility/')).toEqual({ screen: 'visibility' })
     expect(resolveRoute('/admin/backups/')).toEqual({ screen: 'backups' })
     expect(resolveRoute('/admin/activity/')).toEqual({ screen: 'activity' })
     expect(

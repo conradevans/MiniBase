@@ -86,6 +86,7 @@ func isFrontendRoute(requestPath string) bool {
 		"/guest",
 		"/admin",
 		"/admin/databases",
+		"/admin/visibility",
 		"/admin/backups",
 		"/admin/activity":
 

@@ -7,14 +7,17 @@ separate products and services.
 
 MiniBase v1 is ReactorLab's self-hosted PostgreSQL database control plane running on the Dell.
 
-Current production includes PostgreSQL 17, isolated databases and roles, database create/delete, MiniDeploy attach/detach, deletion protection while attached, manual and automatic backups, restore-as-new, replace-current restore, automatic retention, persistent Activity history, a React admin dashboard, restricted Guest routes, Cloudflare Access protection, and systemd-managed startup and backups.
+Current production includes PostgreSQL 17, isolated databases and roles, database create/delete, MiniDeploy attach/detach, deletion protection while attached, manual and automatic backups, restore-as-new, replace-current restore, automatic retention, persistent Activity history, a React admin dashboard, restricted Guest routes, Cloudflare Access protection, and systemd-managed startup and backups. The current code also adds administrator-controlled, per-database Guest View visibility.
 
 Production listeners:
 
 - `127.0.0.1:9100` — private control plane
 - `127.0.0.1:9103` — public Cloudflare Tunnel origin
 
-SQLite production schema is version 5 at `/srv/minibase/data/minibase.db`.
+The current code uses SQLite schema version 6 at
+`/srv/minibase/data/minibase.db`. Migration 6 is applied transactionally on
+service startup; a running version-5 deployment remains unchanged until that
+code is rolled out and restarted.
 
 Automatic backups run daily at 03:00 UTC through `minibase-backup.timer` with `Persistent=true`. Backups remain on the same Dell, so they protect against logical/application errors but not loss of the Dell storage device.
 
@@ -151,7 +154,9 @@ The dashboard routes are:
 /admin                    administrative overview
 /admin/databases          database list and creation
 /admin/databases/{id}     safe database metadata and backups
+/admin/visibility         per-database Guest View controls
 /admin/backups            backup inventory and restore controls
+/admin/activity           persistent lifecycle history
 ```
 
 The Guest view uses dedicated read-only endpoints with an allowlisted response:
@@ -161,10 +166,39 @@ GET /api/v1/guest/status
 GET /api/v1/guest/databases
 ```
 
-Guest database responses contain only `id`, `displayName`, and `status`. The
-administrative UI uses the existing Go API and can provision a database from a
-display name. Neither UI displays generated roles, passwords, secret paths,
-administrator details, or connection strings.
+`GET /api/v1/guest/databases` returns an aggregate envelope:
+
+```json
+{
+  "summary": {"total": 3, "showing": 1, "hidden": 2},
+  "databases": [
+    {"id": "database_<32 lowercase hex>", "displayName": "Shared", "status": "ready"}
+  ]
+}
+```
+
+Only databases whose persistent `guestVisible` field is true appear in
+`databases`. Each listed object contains exactly `id`, `displayName`, and
+`status`; hidden database identifiers, names, internal names, roles,
+credentials, attachment metadata, and backup metadata are not serialized. The
+summary deliberately reports all database counts without identifying hidden
+resources.
+
+Administrators manage this field from `/admin/visibility` or through:
+
+```text
+PATCH /api/v1/databases/{id}/visibility
+{"guestVisible":true}
+```
+
+The endpoint accepts one strict JSON value, rejects missing or unknown fields,
+and updates only `guest_visible` and `updated_at`. New databases are hidden by
+default whether created from Admin, the MiniDeploy integration, or a
+restore-as-new operation. Migration 6 marks every pre-existing database
+visible to preserve the legacy Guest View. Replace-current restore, status
+changes, backup operations, and attachment changes preserve the target's
+visibility. PostgreSQL and its credentials remain private regardless of this
+listing preference.
 
 MiniBase remains bound to `127.0.0.1:9100`. The `/guest` and `/admin` names are
 navigation only and are **not an authentication boundary** in Phase 4. Access
@@ -284,8 +318,9 @@ through Guest or ordinary browser APIs.
 
 Database detail in the Admin dashboard can show the attached canonical
 application, `MiniDeploy` service label, and `Primary` binding. Browser response
-adapters allowlist those fields. Guest remains unchanged and receives only
-database `id`, `displayName`, and `status`.
+adapters allowlist those fields. Attachment metadata remains excluded from
+Guest responses; the later per-database visibility feature still returns only
+database `id`, `displayName`, and `status` for listed resources.
 
 An attachment relationship is independent from PostgreSQL lifecycle. Deleting
 the relationship never deletes the database, dedicated role, credential, or

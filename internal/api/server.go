@@ -23,6 +23,7 @@ type metadataReader interface {
 	SchemaVersion(context.Context) (int, error)
 	ListDatabases(context.Context) ([]metadata.Database, error)
 	GetDatabase(context.Context, string) (metadata.Database, error)
+	UpdateGuestVisibility(context.Context, string, bool) (metadata.Database, error)
 }
 
 type databaseProvisioner interface {

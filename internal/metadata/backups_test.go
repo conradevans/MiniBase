@@ -23,6 +23,10 @@ func TestBackupMetadataLifecycleAndOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDatabaseMetadata() error = %v", err)
 	}
+	database, err = store.UpdateGuestVisibility(ctx, database.ID, true)
+	if err != nil {
+		t.Fatalf("UpdateGuestVisibility() error = %v", err)
+	}
 
 	backupIDs := []string{
 		"backup_11111111111111111111111111111111",
@@ -105,6 +109,10 @@ func TestBackupMetadataLifecycleAndOrdering(t *testing.T) {
 	}
 	if _, err := store.GetBackup(ctx, preRestore.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetBackup(deleted) error = %v, want ErrNotFound", err)
+	}
+	reloaded, err := store.GetDatabase(ctx, database.ID)
+	if err != nil || !reloaded.GuestVisible {
+		t.Fatalf("backup metadata lifecycle changed visibility: database=%#v error=%v", reloaded, err)
 	}
 }
 

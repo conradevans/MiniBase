@@ -148,6 +148,9 @@ func TestDatabaseMetadataLifecycle(t *testing.T) {
 	if created.Status != StatusMetadataOnly {
 		t.Fatalf("Status = %q, want %q", created.Status, StatusMetadataOnly)
 	}
+	if created.GuestVisible {
+		t.Fatal("new database is guest-visible, want hidden by default")
+	}
 
 	listed, err := store.ListDatabases(ctx)
 	if err != nil {
@@ -182,6 +185,41 @@ func TestDatabaseMetadataLifecycle(t *testing.T) {
 	}
 	if updated.InternalName != created.InternalName {
 		t.Fatalf("internal name changed from %q to %q", created.InternalName, updated.InternalName)
+	}
+
+	visible, err := store.UpdateGuestVisibility(ctx, created.ID, true)
+	if err != nil {
+		t.Fatalf("UpdateGuestVisibility() error = %v", err)
+	}
+	if !visible.GuestVisible || visible.Status != StatusProvisioning || visible.DisplayName != "Updated Name" {
+		t.Fatalf("visibility update changed unrelated metadata: %#v", visible)
+	}
+	reloaded, err := store.GetDatabase(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetDatabase() after visibility update error = %v", err)
+	}
+	if !reloaded.GuestVisible {
+		t.Fatal("guest visibility was not persisted")
+	}
+}
+
+func TestProvisioningDatabaseIsHiddenByDefault(t *testing.T) {
+	store, _ := openTestStore(t)
+	database, err := store.CreateProvisioningDatabase(context.Background(), ProvisioningDatabase{
+		ID:           "database_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		DisplayName:  "Provisioned",
+		InternalName: "mb_db_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		RoleName:     "mb_role_cccccccccccccccccccccccccccccccc",
+	})
+	if err != nil {
+		t.Fatalf("CreateProvisioningDatabase() error = %v", err)
+	}
+	if database.GuestVisible {
+		t.Fatal("provisioning database is guest-visible, want hidden by default")
+	}
+	reloaded, err := store.GetDatabase(context.Background(), database.ID)
+	if err != nil || reloaded.GuestVisible {
+		t.Fatalf("reloaded provisioning database = %#v, error = %v", reloaded, err)
 	}
 }
 
@@ -267,6 +305,91 @@ func TestMissingRecordBehavior(t *testing.T) {
 	if _, err := store.UpdateDatabaseStatus(ctx, "database_00000000000000000000000000000000", StatusReady); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("UpdateDatabaseStatus() error = %v, want ErrNotFound", err)
 	}
+	if _, err := store.UpdateGuestVisibility(ctx, "database_00000000000000000000000000000000", true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("UpdateGuestVisibility() error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestGuestVisibilityUpdateDoesNotResurrectDeletedDatabase(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t)
+	database, err := store.CreateDatabaseMetadata(ctx, "Delete Me")
+	if err != nil {
+		t.Fatalf("CreateDatabaseMetadata() error = %v", err)
+	}
+	if err := store.DeleteDatabaseMetadata(ctx, database.ID); err != nil {
+		t.Fatalf("DeleteDatabaseMetadata() error = %v", err)
+	}
+	if _, err := store.UpdateGuestVisibility(ctx, database.ID, true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("UpdateGuestVisibility() after delete error = %v, want ErrNotFound", err)
+	}
+	if _, err := store.GetDatabase(ctx, database.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetDatabase() after delete error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestConcurrentGuestVisibilityAndLifecycleUpdatesPreserveBothFields(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t)
+	database, err := store.CreateDatabaseMetadata(ctx, "Concurrent Updates")
+	if err != nil {
+		t.Fatalf("CreateDatabaseMetadata() error = %v", err)
+	}
+
+	errorsChannel := make(chan error, 2)
+	go func() {
+		_, err := store.UpdateGuestVisibility(ctx, database.ID, true)
+		errorsChannel <- err
+	}()
+	go func() {
+		_, err := store.UpdateDatabaseStatus(ctx, database.ID, StatusReady)
+		errorsChannel <- err
+	}()
+	for range 2 {
+		if err := <-errorsChannel; err != nil {
+			t.Fatalf("concurrent update error = %v", err)
+		}
+	}
+
+	reloaded, err := store.GetDatabase(ctx, database.ID)
+	if err != nil {
+		t.Fatalf("GetDatabase() error = %v", err)
+	}
+	if !reloaded.GuestVisible || reloaded.Status != StatusReady {
+		t.Fatalf("concurrent updates lost a field: %#v", reloaded)
+	}
+}
+
+func TestConcurrentGuestVisibilityUpdateAndDeleteCannotResurrectDatabase(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t)
+
+	for attempt := range 16 {
+		database, err := store.CreateDatabaseMetadata(ctx, "Concurrent Delete")
+		if err != nil {
+			t.Fatalf("attempt %d CreateDatabaseMetadata() error = %v", attempt, err)
+		}
+
+		deleteErrors := make(chan error, 1)
+		visibilityErrors := make(chan error, 1)
+		go func() {
+			deleteErrors <- store.DeleteDatabaseMetadata(ctx, database.ID)
+		}()
+		go func() {
+			_, err := store.UpdateGuestVisibility(ctx, database.ID, true)
+			visibilityErrors <- err
+		}()
+
+		if err := <-deleteErrors; err != nil {
+			t.Fatalf("attempt %d DeleteDatabaseMetadata() error = %v", attempt, err)
+		}
+		if err := <-visibilityErrors; err != nil && !errors.Is(err, ErrNotFound) {
+			t.Fatalf("attempt %d UpdateGuestVisibility() error = %v", attempt, err)
+		}
+		if _, err := store.GetDatabase(ctx, database.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("attempt %d database was resurrected: error = %v", attempt, err)
+		}
+	}
 }
 
 func TestMigrationFromV1PreservesExistingMetadata(t *testing.T) {
@@ -328,8 +451,128 @@ func TestMigrationFromV1PreservesExistingMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDatabase() error = %v", err)
 	}
-	if database.DisplayName != "Existing Metadata" || database.InternalName != internalName || database.RoleName != "" {
+	if database.DisplayName != "Existing Metadata" || database.InternalName != internalName || database.RoleName != "" || !database.GuestVisible {
 		t.Fatalf("migrated database = %#v", database)
+	}
+}
+
+func TestMigrationFromV5AddsGuestVisibilityAndPreservesHiddenValue(t *testing.T) {
+	ctx := context.Background()
+	databasePath := filepath.Join(t.TempDir(), "minibase.db")
+	if _, err := prepareDatabasePath(databasePath); err != nil {
+		t.Fatalf("prepareDatabasePath() error = %v", err)
+	}
+
+	db, err := sql.Open("sqlite", sqliteDSN(databasePath))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
+		version INTEGER PRIMARY KEY,
+		applied_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create migration table: %v", err)
+	}
+	for _, migration := range migrations[:5] {
+		for _, statement := range migration.statements {
+			if _, err := db.ExecContext(ctx, statement); err != nil {
+				t.Fatalf("apply v%d statement: %v", migration.version, err)
+			}
+		}
+		if _, err := db.ExecContext(
+			ctx,
+			"INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+			migration.version,
+			time.Now().UTC().Format(time.RFC3339Nano),
+		); err != nil {
+			t.Fatalf("record v%d migration: %v", migration.version, err)
+		}
+	}
+
+	const (
+		databaseID   = "database_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		internalName = "mb_db_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		roleName     = "mb_role_cccccccccccccccccccccccccccccccc"
+	)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.ExecContext(
+		ctx,
+		`INSERT INTO databases (
+			id, display_name, internal_name, status, created_at, updated_at, role_name
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		databaseID,
+		"Existing V5 Database",
+		internalName,
+		StatusReady,
+		now,
+		now,
+		roleName,
+	); err != nil {
+		t.Fatalf("insert v5 database: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v5 database: %v", err)
+	}
+
+	store, err := Open(ctx, databasePath)
+	if err != nil {
+		t.Fatalf("Open() migrated v5 database error = %v", err)
+	}
+	storeOpen := true
+	defer func() {
+		if storeOpen {
+			_ = store.Close()
+		}
+	}()
+
+	version, err := store.SchemaVersion(ctx)
+	if err != nil || version != CurrentSchemaVersion {
+		t.Fatalf("SchemaVersion() = %d, %v; want %d", version, err, CurrentSchemaVersion)
+	}
+	var guestVisible int
+	if err := store.db.QueryRowContext(
+		ctx,
+		"SELECT guest_visible FROM databases WHERE id = ?",
+		databaseID,
+	).Scan(&guestVisible); err != nil {
+		t.Fatalf("read migrated guest visibility: %v", err)
+	}
+	if guestVisible != 1 {
+		t.Fatalf("migrated guest_visible = %d, want 1", guestVisible)
+	}
+	if _, err := store.db.ExecContext(
+		ctx,
+		"UPDATE databases SET guest_visible = 2 WHERE id = ?",
+		databaseID,
+	); err == nil {
+		t.Fatal("guest_visible CHECK constraint accepted 2")
+	}
+
+	hidden, err := store.UpdateGuestVisibility(ctx, databaseID, false)
+	if err != nil {
+		t.Fatalf("UpdateGuestVisibility(false) error = %v", err)
+	}
+	if hidden.GuestVisible {
+		t.Fatal("UpdateGuestVisibility(false) returned a visible database")
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close migrated store: %v", err)
+	}
+	storeOpen = false
+
+	reopened, err := Open(ctx, databasePath)
+	if err != nil {
+		t.Fatalf("reopen migrated database error = %v", err)
+	}
+	defer func() { _ = reopened.Close() }()
+
+	database, err := reopened.GetDatabase(ctx, databaseID)
+	if err != nil {
+		t.Fatalf("GetDatabase() after reopen error = %v", err)
+	}
+	if database.GuestVisible {
+		t.Fatal("hidden guest visibility was reset after reopen")
 	}
 }
 
@@ -362,7 +605,7 @@ func TestInitialSchemaContainsNoCredentialColumns(t *testing.T) {
 		t.Fatalf("iterate table info: %v", err)
 	}
 
-	want := []string{"id", "display_name", "internal_name", "status", "created_at", "updated_at", "role_name"}
+	want := []string{"id", "display_name", "internal_name", "status", "created_at", "updated_at", "role_name", "guest_visible"}
 	if strings.Join(columns, ",") != strings.Join(want, ",") {
 		t.Fatalf("columns = %v, want %v", columns, want)
 	}

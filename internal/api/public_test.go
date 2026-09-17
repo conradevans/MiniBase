@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/conradevans/MiniBase/internal/accessauth"
@@ -114,6 +115,22 @@ func TestPublicHandlerRejectsAdminWithoutAccessToken(
 				http.StatusUnauthorized,
 			)
 		}
+	}
+}
+
+func TestPublicHandlerProtectsGuestVisibilityMutation(t *testing.T) {
+	server, _ := testServer(t)
+	handler := PublicHandler(server, fakePublicAccessValidator{})
+	request := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/databases/database_00000000000000000000000000000000/visibility",
+		strings.NewReader(`{"guestVisible":true}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusUnauthorized, response.Body.String())
 	}
 }
 

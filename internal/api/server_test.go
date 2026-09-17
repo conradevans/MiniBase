@@ -113,7 +113,7 @@ func TestDatabaseDetail(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
 		t.Fatalf("decode response fields: %v", err)
 	}
-	assertExactKeys(t, fields, "id", "displayName", "internalName", "status", "createdAt", "updatedAt", "attachments")
+	assertExactKeys(t, fields, "id", "displayName", "internalName", "status", "guestVisible", "createdAt", "updatedAt", "attachments")
 	assertSafeResponse(t, response.Body.String())
 }
 
@@ -222,7 +222,7 @@ func TestCreateDatabase(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
 		t.Fatalf("decode response fields: %v", err)
 	}
-	assertExactKeys(t, fields, "id", "displayName", "internalName", "status", "createdAt", "updatedAt")
+	assertExactKeys(t, fields, "id", "displayName", "internalName", "status", "guestVisible", "createdAt", "updatedAt")
 	assertSafeResponse(t, response.Body.String())
 	if strings.Contains(response.Body.String(), "roleName") {
 		t.Fatal("response exposed internal role name")

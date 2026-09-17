@@ -8,6 +8,7 @@ const database = {
   displayName: 'Scheduler Production',
   internalName: 'mb_db_0123456789abcdef0123456789abcdef',
   status: 'ready',
+  guestVisible: false,
   createdAt: '2026-09-01T00:00:00Z',
   updatedAt: '2026-09-01T00:00:00Z',
 }

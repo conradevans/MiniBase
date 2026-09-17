@@ -39,6 +39,7 @@ type Database struct {
 	InternalName string         `json:"internalName"`
 	RoleName     string         `json:"-"`
 	Status       DatabaseStatus `json:"status"`
+	GuestVisible bool           `json:"guestVisible"`
 	CreatedAt    time.Time      `json:"createdAt"`
 	UpdatedAt    time.Time      `json:"updatedAt"`
 }
@@ -131,8 +132,8 @@ func (s *Store) insertDatabase(ctx context.Context, database Database) (Database
 	_, err = tx.ExecContext(
 		ctx,
 		`INSERT INTO databases (
-			id, display_name, internal_name, status, created_at, updated_at, role_name
-		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			id, display_name, internal_name, status, created_at, updated_at, role_name, guest_visible
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		database.ID,
 		database.DisplayName,
 		database.InternalName,
@@ -140,6 +141,7 @@ func (s *Store) insertDatabase(ctx context.Context, database Database) (Database
 		database.CreatedAt.Format(time.RFC3339Nano),
 		database.UpdatedAt.Format(time.RFC3339Nano),
 		roleName,
+		database.GuestVisible,
 	)
 	if err != nil {
 		return Database{}, classifyWriteError("create database metadata", err)
@@ -154,7 +156,7 @@ func (s *Store) insertDatabase(ctx context.Context, database Database) (Database
 func (s *Store) GetDatabase(ctx context.Context, id string) (Database, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, display_name, internal_name, role_name, status, created_at, updated_at
+		`SELECT id, display_name, internal_name, role_name, status, guest_visible, created_at, updated_at
 		FROM databases
 		WHERE id = ?`,
 		id,
@@ -180,7 +182,7 @@ func (s *Store) ListProvisioningDatabases(ctx context.Context) ([]Database, erro
 func (s *Store) listDatabases(ctx context.Context, whereClause string) ([]Database, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, display_name, internal_name, role_name, status, created_at, updated_at
+		`SELECT id, display_name, internal_name, role_name, status, guest_visible, created_at, updated_at
 		FROM databases`+whereClause+`
 		ORDER BY created_at, id`,
 	)
@@ -225,6 +227,15 @@ func (s *Store) UpdateDisplayName(ctx context.Context, id, displayName string) (
 		id,
 		"UPDATE databases SET display_name = ?, updated_at = ? WHERE id = ?",
 		normalizedName,
+	)
+}
+
+func (s *Store) UpdateGuestVisibility(ctx context.Context, id string, guestVisible bool) (Database, error) {
+	return s.updateDatabase(
+		ctx,
+		id,
+		"UPDATE databases SET guest_visible = ?, updated_at = ? WHERE id = ?",
+		guestVisible,
 	)
 }
 
@@ -278,7 +289,7 @@ func (s *Store) updateDatabase(ctx context.Context, id, statement string, value 
 
 	row := tx.QueryRowContext(
 		ctx,
-		`SELECT id, display_name, internal_name, role_name, status, created_at, updated_at
+		`SELECT id, display_name, internal_name, role_name, status, guest_visible, created_at, updated_at
 		FROM databases
 		WHERE id = ?`,
 		id,
@@ -306,6 +317,7 @@ func scanDatabase(scanner rowScanner) (Database, error) {
 		&database.InternalName,
 		&roleName,
 		&database.Status,
+		&database.GuestVisible,
 		&createdAt,
 		&updatedAt,
 	); err != nil {

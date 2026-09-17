@@ -3,6 +3,7 @@ export const routes = {
   guest: '/guest',
   admin: '/admin',
   databases: '/admin/databases',
+  visibility: '/admin/visibility',
   backups: '/admin/backups',
   activity: '/admin/activity',
 }
@@ -22,6 +23,8 @@ export function resolveRoute(pathname) {
       return { screen: 'overview' }
     case routes.databases:
       return { screen: 'databases' }
+    case routes.visibility:
+      return { screen: 'visibility' }
     case routes.backups:
       return { screen: 'backups' }
     case routes.activity:

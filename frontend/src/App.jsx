@@ -11,6 +11,7 @@ import GuestPage from './components/GuestPage'
 import LandingPage from './components/LandingPage'
 import NotFoundPage from './components/NotFoundPage'
 import OverviewPage from './components/OverviewPage'
+import VisibilityPage from './components/VisibilityPage'
 import { resolveRoute } from './routing'
 
 import './App.css'
@@ -55,6 +56,12 @@ export default function App({
       return (
         <AdminShell active="databases" navigate={navigate} api={adminApi}>
           <DatabasesPage api={adminApi} navigate={navigate} />
+        </AdminShell>
+      )
+    case 'visibility':
+      return (
+        <AdminShell active="visibility" navigate={navigate} api={adminApi}>
+          <VisibilityPage api={adminApi} />
         </AdminShell>
       )
     case 'backups':

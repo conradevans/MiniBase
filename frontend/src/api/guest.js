@@ -1,6 +1,7 @@
 import { requestJSON } from './request'
 import {
   requireDatabaseStatus,
+  requireNumber,
   requireRecord,
   requireString,
 } from './validation'
@@ -14,6 +15,35 @@ export function toGuestDatabase(value) {
   }
 }
 
+function requireCount(value) {
+  const count = requireNumber(value)
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error('invalid guest database count')
+  }
+  return count
+}
+
+export function toGuestDatabasesResponse(value) {
+  const result = requireRecord(value)
+  const summaryValue = requireRecord(result.summary)
+  if (!Array.isArray(result.databases)) {
+    throw new Error('invalid guest database list')
+  }
+  const summary = {
+    total: requireCount(summaryValue.total),
+    showing: requireCount(summaryValue.showing),
+    hidden: requireCount(summaryValue.hidden),
+  }
+  const databases = result.databases.map(toGuestDatabase)
+  if (
+    summary.total !== summary.showing + summary.hidden ||
+    summary.showing !== databases.length
+  ) {
+    throw new Error('invalid guest database summary')
+  }
+  return { summary, databases }
+}
+
 export function createGuestApi(requester = requestJSON) {
   return {
     async getStatus() {
@@ -25,11 +55,9 @@ export function createGuestApi(requester = requestJSON) {
     },
 
     async getDatabases() {
-      const result = await requester('/api/v1/guest/databases')
-      if (!Array.isArray(result)) {
-        throw new Error('invalid guest database list')
-      }
-      return result.map(toGuestDatabase)
+      return toGuestDatabasesResponse(
+        await requester('/api/v1/guest/databases'),
+      )
     },
   }
 }

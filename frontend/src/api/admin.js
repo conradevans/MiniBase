@@ -30,11 +30,20 @@ export function toAdminDatabase(value) {
     displayName: requireString(database.displayName),
     internalName: requireString(database.internalName),
     status: requireDatabaseStatus(database.status),
+    guestVisible: requireBoolean(database.guestVisible),
     createdAt: requireString(database.createdAt),
     updatedAt: requireString(database.updatedAt),
     attachments: Array.isArray(database.attachments)
       ? database.attachments.map(toAdminAttachment)
       : [],
+  }
+}
+
+function toGuestVisibility(value) {
+  const visibility = requireRecord(value)
+  return {
+    id: requireString(visibility.id),
+    guestVisible: requireBoolean(visibility.guestVisible),
   }
 }
 
@@ -215,6 +224,21 @@ export function createAdminApi(requester = requestJSON) {
       return requester(`/api/v1/databases/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       })
+    },
+
+    async updateGuestVisibility(id, guestVisible) {
+      return toGuestVisibility(
+        await requester(
+          `/api/v1/databases/${encodeURIComponent(id)}/visibility`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ guestVisible }),
+          },
+        ),
+      )
     },
 
     async getDeployments() {

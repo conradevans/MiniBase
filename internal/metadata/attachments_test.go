@@ -25,6 +25,10 @@ func TestAttachmentLifecycleUniquenessAndIsolation(t *testing.T) {
 	store, _ := openTestStore(t)
 	firstDB := readyAttachmentDatabase(t, store, "First")
 	secondDB := readyAttachmentDatabase(t, store, "Second")
+	firstDB, err := store.UpdateGuestVisibility(ctx, firstDB.ID, true)
+	if err != nil {
+		t.Fatalf("UpdateGuestVisibility() error = %v", err)
+	}
 	ids := []string{
 		"attachment_00000000000000000000000000000001",
 		"attachment_00000000000000000000000000000002",
@@ -41,6 +45,15 @@ func TestAttachmentLifecycleUniquenessAndIsolation(t *testing.T) {
 	}
 	if created.ID != "attachment_00000000000000000000000000000001" {
 		t.Fatalf("attachment ID = %q", created.ID)
+	}
+	if _, err := store.UpdateGuestVisibility(ctx, firstDB.ID, false); err != nil {
+		t.Fatalf("hide attached database: %v", err)
+	}
+	if got, err := store.GetAttachment(ctx, created.ID); err != nil || got != created {
+		t.Fatalf("visibility update changed attachment: attachment=%#v error=%v", got, err)
+	}
+	if _, err := store.UpdateGuestVisibility(ctx, firstDB.ID, true); err != nil {
+		t.Fatalf("show attached database: %v", err)
 	}
 	if _, err := store.CreateAttachment(ctx, secondDB.ID, ConsumerTypeMiniDeploy, "scheduler", BindingNamePrimary); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate consumer binding error = %v, want ErrConflict", err)
@@ -64,6 +77,10 @@ func TestAttachmentLifecycleUniquenessAndIsolation(t *testing.T) {
 	}
 	if _, err := store.GetDatabase(ctx, firstDB.ID); err != nil {
 		t.Fatalf("database was deleted with attachment: %v", err)
+	}
+	reloaded, err := store.GetDatabase(ctx, firstDB.ID)
+	if err != nil || !reloaded.GuestVisible {
+		t.Fatalf("attachment lifecycle changed visibility: database=%#v error=%v", reloaded, err)
 	}
 }
 
@@ -120,6 +137,9 @@ func TestSchemaV3ToCurrentPreservesDatabaseAndBackupMetadata(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.db.ExecContext(ctx, "ALTER TABLE databases DROP COLUMN guest_visible"); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +158,7 @@ func TestSchemaV3ToCurrentPreservesDatabaseAndBackupMetadata(t *testing.T) {
 			err,
 		)
 	}
-	if got, err := reopened.GetDatabase(ctx, database.ID); err != nil || got.ID != database.ID {
+	if got, err := reopened.GetDatabase(ctx, database.ID); err != nil || got.ID != database.ID || !got.GuestVisible {
 		t.Fatalf("preserved database = %#v, %v", got, err)
 	}
 	if got, err := reopened.GetBackup(ctx, backup.ID); err != nil || got.ID != backup.ID {

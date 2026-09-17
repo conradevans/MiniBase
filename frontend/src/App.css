@@ -336,21 +336,21 @@ footer {
 
 .guest-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(100px, 1fr));
-  min-width: 270px;
-  border-top: 1px solid #252a32;
-  border-bottom: 1px solid #252a32;
+  grid-template-columns: repeat(3, 1fr);
+  overflow: hidden;
+  border: 1px solid #252b33;
+  border-radius: 13px;
+  background: #111419;
 }
 
 .guest-summary div {
-  padding: 18px;
+  padding: 20px;
 }
 
 .guest-summary div + div {
-  border-left: 1px solid #252a32;
+  border-left: 1px solid #252b33;
 }
 
-.guest-summary span,
 .database-meta span,
 .stat-card span,
 .record-count,
@@ -362,10 +362,18 @@ footer {
   letter-spacing: 1.2px;
 }
 
+.guest-summary span {
+  display: block;
+  color: #626b76;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
 .guest-summary strong {
   display: block;
-  margin-top: 7px;
-  font-size: 25px;
+  margin-top: 8px;
+  font-size: 27px;
 }
 
 .content-section {
@@ -631,6 +639,172 @@ footer {
   border: 1px solid #57272d;
   background: #2d171a;
   color: #fda4af;
+}
+
+.visibility-feedback {
+  margin: 0 0 28px;
+}
+
+.visibility-page {
+  min-width: 0;
+  padding: 9px 0 10px;
+}
+
+.visibility-page-heading {
+  margin-bottom: 24px;
+}
+
+.visibility-page-heading .eyebrow {
+  color: #6e7682;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+}
+
+.visibility-page-heading h1 {
+  max-width: 760px;
+  margin: 0;
+  font-size: clamp(36px, 4vw, 48px);
+  line-height: 1.04;
+  letter-spacing: -2px;
+}
+
+.visibility-page-heading .hero-copy {
+  max-width: 680px;
+  margin: 19px 0 0;
+  color: #969daa;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.visibility-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 27px;
+  overflow: hidden;
+  border: 1px solid #292f38;
+  border-radius: 12px;
+  background: #12151a;
+}
+
+.visibility-summary > div {
+  min-width: 0;
+  padding: 16px 18px;
+  border-right: 1px solid #292f38;
+  text-align: center;
+}
+
+.visibility-summary > div:last-child {
+  border-right: 0;
+}
+
+.visibility-summary span {
+  display: block;
+  color: #717986;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+.visibility-summary strong {
+  display: block;
+  margin-top: 7px;
+  color: #e4e4e7;
+  font-size: 18px;
+}
+
+.visibility-list {
+  overflow: hidden;
+  border: 1px solid #292f38;
+  border-radius: 13px;
+  background: #12151a;
+}
+
+.visibility-row {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 15px 18px;
+  border-bottom: 1px solid #252a32;
+}
+
+.visibility-row:last-child {
+  border-bottom: 0;
+}
+
+.visibility-copy {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.visibility-copy strong {
+  overflow: hidden;
+  color: #e4e4e7;
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+
+.visibility-copy span {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.visibility-copy span.visible {
+  color: #86efac;
+}
+
+.visibility-copy span.hidden {
+  color: #fda4af;
+}
+
+.visibility-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex: 0 0 auto;
+  padding: 2px;
+  border: 1px solid;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.visibility-switch.visible {
+  border-color: #28613d;
+  background: #173522;
+}
+
+.visibility-switch.hidden {
+  border-color: #633038;
+  background: #321a1e;
+}
+
+.visibility-switch:focus-visible {
+  outline: 2px solid #7d8793;
+  outline-offset: 3px;
+}
+
+.visibility-switch:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.visibility-switch-thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #d8dce1;
+  transition: transform 120ms ease;
+}
+
+.visibility-switch.visible .visibility-switch-thumb {
+  transform: translateX(18px);
 }
 
 .database-list {
@@ -1292,6 +1466,11 @@ code {
 }
 
 @media (max-width: 700px) {
+  .visibility-page-heading h1 {
+    font-size: 36px;
+    letter-spacing: -1.5px;
+  }
+
   .danger-zone-actions {
     align-items: stretch;
     flex-direction: column;

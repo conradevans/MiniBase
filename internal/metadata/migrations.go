@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const CurrentSchemaVersion = 5
+const CurrentSchemaVersion = 6
 
 type migration struct {
 	version    int
@@ -174,6 +174,13 @@ var migrations = []migration{
 				ON activity_events(created_at DESC, id DESC)`,
 			`CREATE INDEX activity_events_database_created
 				ON activity_events(database_id, created_at DESC, id DESC)`,
+		},
+	},
+	{
+		version: 6,
+		statements: []string{
+			`ALTER TABLE databases ADD COLUMN guest_visible INTEGER NOT NULL DEFAULT 1
+				CHECK (guest_visible IN (0, 1))`,
 		},
 	},
 }

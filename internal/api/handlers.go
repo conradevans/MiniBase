@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/conradevans/MiniBase/internal/accessauth"
+	"github.com/conradevans/MiniBase/internal/ids"
 	"github.com/conradevans/MiniBase/internal/metadata"
 	"github.com/conradevans/MiniBase/internal/provisioning"
 )
@@ -54,6 +55,26 @@ type guestDatabaseResponse struct {
 	ID          string                  `json:"id"`
 	DisplayName string                  `json:"displayName"`
 	Status      metadata.DatabaseStatus `json:"status"`
+}
+
+type guestDatabaseSummary struct {
+	Total   int `json:"total"`
+	Showing int `json:"showing"`
+	Hidden  int `json:"hidden"`
+}
+
+type guestDatabasesResponse struct {
+	Summary   guestDatabaseSummary    `json:"summary"`
+	Databases []guestDatabaseResponse `json:"databases"`
+}
+
+type updateGuestVisibilityRequest struct {
+	GuestVisible *bool `json:"guestVisible"`
+}
+
+type updateGuestVisibilityResponse struct {
+	ID           string `json:"id"`
+	GuestVisible bool   `json:"guestVisible"`
 }
 
 type createDatabaseRequest struct {
@@ -221,13 +242,56 @@ func (s *Server) handleGuestDatabases(response http.ResponseWriter, request *htt
 
 	guestDatabases := make([]guestDatabaseResponse, 0, len(databases))
 	for _, database := range databases {
+		if !database.GuestVisible {
+			continue
+		}
 		guestDatabases = append(guestDatabases, guestDatabaseResponse{
 			ID:          database.ID,
 			DisplayName: database.DisplayName,
 			Status:      database.Status,
 		})
 	}
-	writeJSON(response, http.StatusOK, guestDatabases)
+	writeJSON(response, http.StatusOK, guestDatabasesResponse{
+		Summary: guestDatabaseSummary{
+			Total:   len(databases),
+			Showing: len(guestDatabases),
+			Hidden:  len(databases) - len(guestDatabases),
+		},
+		Databases: guestDatabases,
+	})
+}
+
+func (s *Server) handleUpdateGuestVisibility(response http.ResponseWriter, request *http.Request, id string) {
+	if !ids.ValidDatabaseID(id) {
+		writeError(response, http.StatusNotFound, "not_found", "database not found")
+		return
+	}
+
+	var input updateGuestVisibilityRequest
+	if err := decodeRequiredJSON(response, request, &input); err != nil {
+		writeDecodeError(response, err)
+		return
+	}
+	if input.GuestVisible == nil {
+		writeError(response, http.StatusBadRequest, "invalid_request", "guestVisible is required")
+		return
+	}
+
+	database, err := s.store.UpdateGuestVisibility(request.Context(), id, *input.GuestVisible)
+	if errors.Is(err, metadata.ErrNotFound) {
+		writeError(response, http.StatusNotFound, "not_found", "database not found")
+		return
+	}
+	if err != nil {
+		s.logger.Error("database guest visibility update failed", "database_id", id)
+		writeError(response, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+
+	writeJSON(response, http.StatusOK, updateGuestVisibilityResponse{
+		ID:           database.ID,
+		GuestVisible: database.GuestVisible,
+	})
 }
 
 func (s *Server) handleGetDatabase(response http.ResponseWriter, request *http.Request, id string) {

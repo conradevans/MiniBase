@@ -13,6 +13,7 @@ const database = {
   displayName: 'Scheduler',
   internalName: 'mb_db_0123456789abcdef0123456789abcdef',
   status: 'ready',
+  guestVisible: false,
   createdAt: '2026-09-01T00:00:00Z',
   updatedAt: '2026-09-01T00:00:00Z',
   roleName: 'must-not-survive',
@@ -40,9 +41,10 @@ describe('admin API', () => {
       'displayName',
       'internalName',
       'status',
+      'guestVisible',
       'createdAt',
       'updatedAt',
-		'attachments',
+      'attachments',
     ])
   })
 
@@ -90,6 +92,27 @@ describe('admin API', () => {
     expect(requester).toHaveBeenCalledWith(
       `/api/v1/databases/${database.id}`,
       { method: 'DELETE' },
+    )
+  })
+
+  test('uses PATCH for the dedicated guest visibility field', async () => {
+    const requester = vi.fn().mockResolvedValue({
+      id: database.id,
+      guestVisible: true,
+      internalName: 'must-not-survive',
+    })
+    const api = createAdminApi(requester)
+
+    await expect(
+      api.updateGuestVisibility(database.id, true),
+    ).resolves.toEqual({ id: database.id, guestVisible: true })
+    expect(requester).toHaveBeenCalledWith(
+      `/api/v1/databases/${database.id}/visibility`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guestVisible: true }),
+      },
     )
   })
 

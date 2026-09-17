@@ -67,6 +67,18 @@ export default function AdminShell({
 
               <AppLink
                 className={
+                  active === 'visibility'
+                    ? 'nav-item active'
+                    : 'nav-item'
+                }
+                href="/admin/visibility"
+                navigate={navigate}
+              >
+                Visibility
+              </AppLink>
+
+              <AppLink
+                className={
                   active === 'backups'
                     ? 'nav-item active'
                     : 'nav-item'
