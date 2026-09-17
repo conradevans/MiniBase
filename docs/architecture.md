@@ -26,6 +26,47 @@ replace-current restore, automatic retention, and persistent Activity history.
 
 Administrator traffic is protected by Cloudflare Access at the edge and validated again at the MiniBase public origin. Guest routes remain intentionally limited. The MiniDeploy integration is available only on the private listener.
 
+### Database Explorer v1
+
+Database Explorer is an Admin-only, read-only inspection path for logical
+MiniBase databases in the `ready` state. The UI route is
+`/admin/databases/{id}/explorer`; the protected public-origin handler applies
+the existing Cloudflare Access validation before dispatching its structured
+API routes. Neither the Guest API nor Guest frontend contains Explorer routes.
+
+The backend has three operations:
+
+```text
+GET /api/v1/databases/{id}/explorer/objects
+GET /api/v1/databases/{id}/explorer/columns?schema={schema}&object={object}
+GET /api/v1/databases/{id}/explorer/rows?schema={schema}&object={object}&limit={25|50|100}&offset={offset}
+```
+
+Object discovery reads PostgreSQL catalogs, returns every non-system schema,
+and preserves whether each object is a table, view, or materialized view.
+Column discovery returns ordinal position, PostgreSQL type, nullability,
+and primary-key membership. Row browsing serializes stored application data
+without automatic masking, distinguishes NULL and JSON,
+summarizes binary values by byte length, and truncates text/JSON cells beyond
+65,536 Unicode characters. MiniBase administrator passwords, per-database
+credentials, `DATABASE_URL` values, credential paths, and MiniDeploy secrets are never part
+of Explorer responses.
+
+Each request uses the existing short-lived `docker exec` PostgreSQL access
+pattern rather than maintaining a pool per database. The command has a bounded
+context, query output is bounded, and every catalog, metadata, and row query is
+wrapped in `BEGIN TRANSACTION READ ONLY` with a five-second PostgreSQL statement
+timeout. Row requests resolve schema/object/type from the catalog before safely
+quoting the identifiers. Raw PostgreSQL and connection errors are translated to
+safe API errors.
+
+Rows default to a page size of 50 and allow only 25, 50, or 100. Pagination uses
+`LIMIT`/`OFFSET` with one extra row to determine `hasMore`; it does not run an
+automatic exact row count. V1 has no sorting, row filtering/search, arbitrary
+SQL, editing, or materialized-view refresh controls. Future versions may add
+sorting, filtering/search, editing, and controlled SQL tooling after their
+security models are designed.
+
 Production automatic backups run through `minibase-backup.timer` every day at 03:00 UTC with `Persistent=true`.
 
 A full lifecycle acceptance test and Dell reboot/recovery test have passed. Docker, PostgreSQL, MiniBase, MiniDeploy workloads, Caddy, cloudflared, database attachments, Activity history, and the backup timer all recovered successfully.

@@ -165,6 +165,17 @@ func (s *Server) routeDatabaseResource(response http.ResponseWriter, request *ht
 			return
 		}
 		s.handleUpdateGuestVisibility(response, request, parts[0])
+	case len(parts) == 3 &&
+		parts[0] != "" &&
+		parts[1] == "explorer" &&
+		parts[2] != "":
+
+		if request.Method != http.MethodGet {
+			response.Header().Set("Allow", http.MethodGet)
+			writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.routeDatabaseExplorer(response, request, parts[0], parts[2])
 	default:
 		writeError(response, http.StatusNotFound, "not_found", "resource not found")
 	}

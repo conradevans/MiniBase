@@ -97,8 +97,16 @@ func isFrontendRoute(requestPath string) bool {
 	if !strings.HasPrefix(normalized, detailPrefix) {
 		return false
 	}
-	databaseID := strings.TrimPrefix(normalized, detailPrefix)
-	return databaseID != "" && !strings.Contains(databaseID, "/") && databaseID != "." && databaseID != ".."
+	remainder := strings.TrimPrefix(normalized, detailPrefix)
+	parts := strings.Split(remainder, "/")
+	if len(parts) == 2 && parts[1] != "explorer" {
+		return false
+	}
+	if len(parts) < 1 || len(parts) > 2 {
+		return false
+	}
+	databaseID := parts[0]
+	return databaseID != "" && databaseID != "." && databaseID != ".."
 }
 
 func validAssetName(name string) bool {

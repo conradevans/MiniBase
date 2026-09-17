@@ -6,6 +6,7 @@ import ActivityPage from './components/ActivityPage'
 import AdminShell from './components/AdminShell'
 import BackupsPage from './components/BackupsPage'
 import DatabaseDetailPage from './components/DatabaseDetailPage'
+import DatabaseExplorerPage from './components/DatabaseExplorerPage'
 import DatabasesPage from './components/DatabasesPage'
 import GuestPage from './components/GuestPage'
 import LandingPage from './components/LandingPage'
@@ -74,6 +75,16 @@ export default function App({
       return (
         <AdminShell active="activity" navigate={navigate} api={adminApi}>
           <ActivityPage api={adminApi} />
+        </AdminShell>
+      )
+    case 'database-explorer':
+      return (
+        <AdminShell active="databases" navigate={navigate} api={adminApi}>
+          <DatabaseExplorerPage
+            api={adminApi}
+            databaseID={route.databaseID}
+            navigate={navigate}
+          />
         </AdminShell>
       )
     case 'database-detail':

@@ -16,6 +16,7 @@ import (
 	"github.com/conradevans/MiniBase/internal/api"
 	"github.com/conradevans/MiniBase/internal/backups"
 	"github.com/conradevans/MiniBase/internal/config"
+	"github.com/conradevans/MiniBase/internal/explorer"
 	"github.com/conradevans/MiniBase/internal/integrationauth"
 	"github.com/conradevans/MiniBase/internal/metadata"
 	"github.com/conradevans/MiniBase/internal/minideploy"
@@ -174,6 +175,12 @@ func run() int {
 	}
 
 	handler := api.New(store, provisioningService, backupService, cfg.FrontendDir, logger)
+	handler.ConfigureExplorer(
+		explorer.NewService(
+			store,
+			explorer.NewDockerPostgres(),
+		),
+	)
 	handler.ConfigureMiniDeployIntegration(integrationToken, credentialStore)
 
 	miniDeployClient, err := minideploy.NewClient(

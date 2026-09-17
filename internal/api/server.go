@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/conradevans/MiniBase/internal/explorer"
 	"github.com/conradevans/MiniBase/internal/metadata"
 )
 
@@ -40,6 +41,12 @@ type backupManager interface {
 	DeleteDatabase(context.Context, string) error
 }
 
+type databaseExplorer interface {
+	ListObjects(context.Context, string) (explorer.Catalog, error)
+	DescribeObject(context.Context, string, string, string) (explorer.Description, error)
+	BrowseRows(context.Context, string, string, string, int, int) (explorer.RowsPage, error)
+}
+
 type Server struct {
 	store               metadataReader
 	activity            activityStore
@@ -53,6 +60,7 @@ type Server struct {
 	miniDeployLifecycle miniDeployLifecycleClient
 	reactorLabBackups   reactorLabBackupReader
 	reactorLabRuntime   reactorLabRuntime
+	explorer            databaseExplorer
 }
 
 func New(store metadataReader, provisioner databaseProvisioner, backupService backupManager, frontendDirectory string, logger *slog.Logger) *Server {
@@ -75,6 +83,10 @@ func New(store metadataReader, provisioner databaseProvisioner, backupService ba
 		server.attachments = attachments
 	}
 	return server
+}
+
+func (s *Server) ConfigureExplorer(service databaseExplorer) {
+	s.explorer = service
 }
 
 func HTTPServer(address string, handler http.Handler) *http.Server {

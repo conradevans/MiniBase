@@ -15,6 +15,11 @@ const safeMessages = {
   invalid_deployment: 'Choose a valid MiniDeploy deployment.',
   request_too_large: 'The request was too large.',
   service_unavailable: 'MiniBase is temporarily unavailable.',
+  database_not_ready: 'Database Explorer is available only when the database is ready.',
+  explorer_timeout: 'The database query timed out.',
+  explorer_result_too_large: 'The returned data is too large to display safely.',
+  explorer_unavailable: 'Database Explorer is temporarily unavailable.',
+  invalid_explorer_request: 'The Database Explorer request was invalid.',
 }
 
 export class MiniBaseApiError extends Error {

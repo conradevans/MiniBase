@@ -26,6 +26,7 @@ func TestStaticFrontendServingAndSPAFallback(t *testing.T) {
 		"/admin/backups", "/admin/activity", "/admin/visibility",
 		"/admin/backups/",
 		"/admin/databases/database_0123456789abcdef0123456789abcdef",
+		"/admin/databases/database_0123456789abcdef0123456789abcdef/explorer",
 	} {
 		t.Run(route, func(t *testing.T) {
 			response := request(t, server, http.MethodGet, route)

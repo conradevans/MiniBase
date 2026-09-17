@@ -23,6 +23,42 @@ Automatic backups run daily at 03:00 UTC through `minibase-backup.timer` with `P
 
 The full v1 lifecycle and a complete Dell reboot/recovery test have both passed.
 
+## Database Explorer v1
+
+MiniBase Admin includes a protected, read-only Database Explorer for databases
+in the `ready` state. The Databases page links to
+`/admin/databases/{id}/explorer`, where administrators can inspect every
+non-system schema, ordinary table, view, and materialized view. The Explorer
+shows structured column metadata (including nullable and primary-key status)
+and browses rows without exposing MiniBase control-plane credentials,
+`DATABASE_URL` values, or credential paths.
+
+The protected Admin API provides only structured `GET` operations:
+
+```text
+GET /api/v1/databases/{id}/explorer/objects
+GET /api/v1/databases/{id}/explorer/columns?schema={schema}&object={object}
+GET /api/v1/databases/{id}/explorer/rows?schema={schema}&object={object}&limit={25|50|100}&offset={offset}
+```
+
+Row browsing defaults to 50 rows and permits page sizes of 25, 50, or 100.
+Pagination uses `LIMIT`/`OFFSET` plus one look-ahead row, so it reports whether
+another page exists without an automatic exact `COUNT(*)`. There is no row
+sorting, filtering/search, SQL console, or editing in v1.
+
+Explorer queries run through short-lived PostgreSQL commands inside read-only
+transactions with a five-second statement timeout. Requested objects are first
+resolved from PostgreSQL catalogs and all identifiers are safely quoted. NULL
+and JSON values retain distinct representations, binary values are summarized
+by byte length, and text/JSON cells larger than 65,536 Unicode characters are
+marked and truncated.
+The complete command output is also bounded. PostgreSQL system schemas remain
+hidden, raw database errors are suppressed, and no Explorer route is exposed
+through the Guest API or Guest UI.
+
+Future Explorer versions may add sorting, filtering/search, editing, or
+controlled SQL tooling; none of those capabilities exists in v1.
+
 The sections below document the historical build phases. Statements describing features as future work are historical to those phases and do not override the current v1 status above.
 
 ## Phase 1: PostgreSQL foundation

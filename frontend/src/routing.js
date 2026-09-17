@@ -12,6 +12,10 @@ export function databaseDetailPath(id) {
   return `${routes.databases}/${encodeURIComponent(id)}`
 }
 
+export function databaseExplorerPath(id) {
+  return `${databaseDetailPath(id)}/explorer`
+}
+
 export function resolveRoute(pathname) {
   const normalized = normalizePath(pathname)
   switch (normalized) {
@@ -37,16 +41,25 @@ export function resolveRoute(pathname) {
   if (!normalized.startsWith(prefix)) {
     return { screen: 'not-found' }
   }
-  const encodedID = normalized.slice(prefix.length)
-  if (!encodedID || encodedID.includes('/')) {
+  const parts = normalized.slice(prefix.length).split('/')
+  if (parts.length < 1 || parts.length > 2 || !parts[0]) {
+    return { screen: 'not-found' }
+  }
+  const nestedRoute = parts.length === 2 ? parts[1] : ''
+  if (nestedRoute && nestedRoute !== 'explorer') {
     return { screen: 'not-found' }
   }
   try {
-    const databaseID = decodeURIComponent(encodedID)
+    const databaseID = decodeURIComponent(parts[0])
     if (!databaseID || databaseID === '.' || databaseID === '..' || databaseID.includes('/')) {
       return { screen: 'not-found' }
     }
-    return { screen: 'database-detail', databaseID }
+    return {
+      screen: nestedRoute === 'explorer'
+        ? 'database-explorer'
+        : 'database-detail',
+      databaseID,
+    }
   } catch {
     return { screen: 'not-found' }
   }

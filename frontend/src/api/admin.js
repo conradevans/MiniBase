@@ -1,4 +1,5 @@
 import { requestJSON } from './request'
+import { createExplorerMethods } from './explorer'
 import {
   requireBackupKind,
   requireBackupStatus,
@@ -180,6 +181,7 @@ function toAdminSession(value) {
 
 export function createAdminApi(requester = requestJSON) {
   return {
+    ...createExplorerMethods(requester),
     async getSession() {
       return toAdminSession(
         await requester('/api/v1/session'),

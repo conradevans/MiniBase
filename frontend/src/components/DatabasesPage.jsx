@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { toAdminDatabase } from '../api/admin'
 import { safeErrorMessage } from '../api/request'
-import { databaseDetailPath } from '../routing'
+import { databaseDetailPath, databaseExplorerPath } from '../routing'
 import { formatTimestamp, shortResourceID } from '../utils/format'
 import AppLink from './AppLink'
 import CreateDatabaseDialog from './CreateDatabaseDialog'
@@ -102,21 +102,36 @@ export default function DatabasesPage({ api, navigate }) {
         ) : (
           <div className="database-list">
             {databases.map((database) => (
-              <AppLink
-                className="database-row"
-                href={databaseDetailPath(database.id)}
-                key={database.id}
-                navigate={navigate}
-              >
-                <div className="database-primary">
+              <div className="database-row" key={database.id}>
+                <AppLink
+                  className="database-primary database-primary-link"
+                  href={databaseDetailPath(database.id)}
+                  navigate={navigate}
+                >
                   <strong>{database.displayName}</strong>
                   <code>{database.internalName}</code>
-                </div>
+                </AppLink>
                 <StatusBadge status={database.status} />
-                <div className="database-meta"><span>CREATED</span><strong>{formatTimestamp(database.createdAt)}</strong></div>
-                <div className="database-meta"><span>RESOURCE</span><strong>{shortResourceID(database.id)}</strong></div>
-                <span className="row-arrow" aria-hidden="true">→</span>
-              </AppLink>
+                <div className="database-meta database-created"><span>CREATED</span><strong>{formatTimestamp(database.createdAt)}</strong></div>
+                <div className="database-meta database-resource"><span>RESOURCE</span><strong>{shortResourceID(database.id)}</strong></div>
+                {database.status === 'ready' ? (
+                  <AppLink
+                    className="button secondary compact-button database-explore-action"
+                    href={databaseExplorerPath(database.id)}
+                    navigate={navigate}
+                  >
+                    Explore
+                  </AppLink>
+                ) : null}
+                <AppLink
+                  className="row-arrow"
+                  href={databaseDetailPath(database.id)}
+                  navigate={navigate}
+                  aria-label={`Open details for ${database.displayName}`}
+                >
+                  →
+                </AppLink>
+              </div>
             ))}
           </div>
         )}
